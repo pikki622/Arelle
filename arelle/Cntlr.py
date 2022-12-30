@@ -33,8 +33,12 @@ def resourcesDir() -> str:
         _resourcesDir = os.path.dirname(sys.executable)
         if os.path.exists(os.path.join(_resourcesDir,"images")):
             return _resourcesDir
-        if sys.platform == "darwin" and _resourcesDir.endswith("/MacOS") and os.path.exists(_resourcesDir[:-6] + "/Resources/images"):
-            return _resourcesDir[:-6] + "/Resources"
+        if (
+            sys.platform == "darwin"
+            and _resourcesDir.endswith("/MacOS")
+            and os.path.exists(f"{_resourcesDir[:-6]}/Resources/images")
+        ):
+            return f"{_resourcesDir[:-6]}/Resources"
     _moduleDir = os.path.dirname(__file__)
     if not os.path.isabs(_moduleDir):
         _moduleDir = os.path.abspath(_moduleDir)
@@ -214,7 +218,7 @@ class Cntlr:
             if self.hasFileSystem and not configHomeDir:
                 tempDir = tempfile.gettempdir()
                 if tempDir.lower().endswith('local\\temp'):
-                    impliedAppDir = tempDir[:-10] + 'local'
+                    impliedAppDir = f'{tempDir[:-10]}local'
                 else:
                     impliedAppDir = tempDir
                 self.userAppDir = os.path.join( impliedAppDir, "Arelle")
@@ -311,7 +315,7 @@ class Cntlr:
             self.uiLang = langCodes[0]
             if not locale and self.uiLang:
                 self.uiLocale = self.uiLang
-            self.uiLangDir = 'rtl' if self.uiLang[0:2].lower() in {"ar","he"} else 'ltr'
+            self.uiLangDir = 'rtl' if self.uiLang[:2].lower() in {"ar","he"} else 'ltr'
         except Exception as ex:
             if fallbackToDefault and not locale and langCodes:
                 locale = langCodes[0]
@@ -414,10 +418,7 @@ class Cntlr:
         """
         args: tuple[str] | tuple[str, dict[str, Any]]
         if self.logger is not None:
-            if messageArgs:
-                args = (message, messageArgs)
-            else:
-                args = (message,)  # pass no args if none provided
+            args = (message, messageArgs) if messageArgs else (message, )
             if refs is None:
                 refs = []
             if isinstance(file, (tuple,list,set)):
@@ -618,13 +619,17 @@ class Cntlr:
 def logRefsFileLines(refs: list[dict[str, Any]]) -> str:
     fileLines: defaultdict[Any, set[str]] = defaultdict(set)
     for ref in refs:
-        href = ref.get("href")
-        if href:
+        if href := ref.get("href"):
             fileLines[href.partition("#")[0]].add(ref.get("sourceLine", 0))
-    return ", ".join(file + " " + ', '.join(str(line)
-                                            for line in sorted(lines, key=lambda l: l)
-                                            if line)
-                    for file, lines in sorted(fileLines.items()))
+    return ", ".join(
+        (
+            f"{file} "
+            + ', '.join(
+                str(line) for line in sorted(lines, key=lambda l: l) if line
+            )
+        )
+        for file, lines in sorted(fileLines.items())
+    )
 
 class LogFormatter(logging.Formatter):
     def __init__(self, fmt: str | None = None, datefmt: str | None = None) -> None:
@@ -643,7 +648,7 @@ class LogFormatter(logging.Formatter):
             if getattr(record, "messageCode", ""):
                 formattedMessage += "[{0}] ".format(getattr(record, "messageCode", ""))
             if getattr(record, "msg", ""):
-                formattedMessage += record.msg + " "
+                formattedMessage += f"{record.msg} "
             if isinstance(record.args, dict) and 'error' in record.args: # args may be list or empty
                 formattedMessage += record.args['error']
             formattedMessage += " \nMessage log error: " + str(ex)
@@ -666,10 +671,7 @@ class LogToPrintHandler(logging.Handler):
 
     def __init__(self, logOutput: str) -> None:
         super(LogToPrintHandler, self).__init__()
-        if logOutput == "logToStdErr":
-            self.logFile = sys.stderr
-        else:
-            self.logFile = None
+        self.logFile = sys.stderr if logOutput == "logToStdErr" else None
 
     def emit(self, logRecord: logging.LogRecord) -> None:
         file = sys.stderr if self.logFile else None
@@ -691,7 +693,7 @@ class LogHandlerWithXml(logging.Handler):
     def recordToXml(self, logRec: logging.LogRecord) -> str:
         def entityEncode(arg: Any, truncateAt: int = self.logTextMaxLength) -> str:  # be sure it's a string, vs int, etc, and encode &, <, ".
             s = str(arg)
-            s = s if len(s) <= truncateAt else s[:truncateAt] + '...'
+            s = s if len(s) <= truncateAt else f'{s[:truncateAt]}...'
             return s.replace("&","&amp;").replace("<","&lt;").replace('"','&quot;')
 
         def ncNameEncode(arg: str) -> str:
@@ -704,14 +706,18 @@ class LogHandlerWithXml(logging.Handler):
             return "".join(s)
 
         def propElts(properties: list[tuple[Any, Any, Any]], indent: str, truncateAt: int = 128) -> str:
-            nestedIndent = indent + ' '
-            return indent.join('<property name="{0}" value="{1}"{2}>'.format(
-                                    entityEncode(p[0]),
-                                    entityEncode(p[1], truncateAt=truncateAt),
-                                    '/' if len(p) == 2
-                                    else '>' + nestedIndent + propElts(p[2],nestedIndent) + indent + '</property')
-                                for p in properties
-                                if 2 <= len(p) <= 3)
+            nestedIndent = f'{indent} '
+            return indent.join(
+                '<property name="{0}" value="{1}"{2}>'.format(
+                    entityEncode(p[0]),
+                    entityEncode(p[1], truncateAt=truncateAt),
+                    '/'
+                    if len(p) == 2
+                    else f'>{nestedIndent}{propElts(p[2], nestedIndent)}{indent}</property',
+                )
+                for p in properties
+                if 2 <= len(p) <= 3
+            )
 
         msg = self.format(logRec)
         if logRec.args and isinstance(logRec.args, Mapping):
@@ -816,8 +822,7 @@ class LogToXmlHandler(LogHandlerWithXml):
         """
         xml = ['<?xml version="1.0" encoding="utf-8"?>\n',
                '<log>']
-        for logRec in self.logRecordBuffer:
-            xml.append(self.recordToXml(logRec))
+        xml.extend(self.recordToXml(logRec) for logRec in self.logRecordBuffer)
         xml.append('</log>')
         if clearLogBuffer:
             self.clearLogBuffer()
@@ -828,9 +833,7 @@ class LogToXmlHandler(LogHandlerWithXml):
 
         :returns: str -- json representation of messages in the log buffer
         """
-        entries = []
-        for logRec in self.logRecordBuffer:
-            entries.append(self.recordToJson(logRec))
+        entries = [self.recordToJson(logRec) for logRec in self.logRecordBuffer]
         if clearLogBuffer:
             self.clearLogBuffer()
         return json.dumps( {"log": entries}, ensure_ascii=False, indent=1, default=str )

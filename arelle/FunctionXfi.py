@@ -122,7 +122,8 @@ def context_period(xc, p, args):
 
 def parent_child(args, parentName, childName, findDescendant=False):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
-    if len(args[0]) != 1: raise XPathContext.FunctionArgType(1,"xbrl:" + parentName)
+    if len(args[0]) != 1:
+        raise XPathContext.FunctionArgType(1, f"xbrl:{parentName}")
     parent = args[0][0]
     if isinstance(parent,ModelObject) and \
        parent.localName == parentName and parent.namespaceURI == XbrlConst.xbrli:
@@ -136,7 +137,7 @@ def parent_child(args, parentName, childName, findDescendant=False):
             return XmlUtil.descendant(parent, XbrlConst.xbrli, childName)
         else:
             return XmlUtil.child(parent, XbrlConst.xbrli, childName)
-    raise XPathContext.FunctionArgType(1,"xbrl:" + parentName)
+    raise XPathContext.FunctionArgType(1, f"xbrl:{parentName}")
 
 def is_start_end_period(xc, p, args):
     return is_period_type(args, "startDate")
@@ -204,48 +205,34 @@ def identifier_value(xc, p, args):
 
 def identifier_scheme(xc, p, args):
     scheme = parent_child(args, "identifier", "@scheme")
-    if scheme is None:
-        return None
-    return anyURI(scheme)
+    return None if scheme is None else anyURI(scheme)
 
 def fact_identifier_value(xc, p, args):
     return XmlUtil.text(item_context_element(xc, args, "identifier")).strip()
 
 def fact_identifier_scheme(xc, p, args):
     scheme = item_context_element(xc, args, "identifier").get("scheme")
-    if scheme is None:
-        return None
-    return anyURI(scheme)
+    return None if scheme is None else anyURI(scheme)
 
 def segment(xc, p, args):
     seg = item_context_element(xc, args, "segment")
-    if seg is None:
-        return () # no segment
-    return seg
+    return () if seg is None else seg
 
 def entity_segment(xc, p, args):
     seg = parent_child(args, "entity", "segment")
-    if seg is None:
-        return () # no segment
-    return seg
+    return () if seg is None else seg
 
 def context_segment(xc, p, args):
     seg = parent_child(args, "context", "segment", True)
-    if seg is None:
-        return () # no segment
-    return seg
+    return () if seg is None else seg
 
 def scenario(xc, p, args):
     scen = item_context_element(xc, args, "scenario")
-    if scen is None:
-        return () # no segment
-    return scen
+    return () if scen is None else scen
 
 def context_scenario(xc, p, args):
     scen = parent_child(args, "context", "scenario")
-    if scen is None:
-        return () # no segment
-    return scen
+    return () if scen is None else scen
 
 def precision(xc, p, args):
     return infer_precision_decimals(xc, p, args, "precision")
@@ -282,12 +269,16 @@ def fraction(xc, p, args):
 
 def conceptProperty(xc, p, args, property):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
-    qn = qnameArg(xc, p, args, 0, 'QName', emptyFallback=None)
-    if qn:
+    if qn := qnameArg(xc, p, args, 0, 'QName', emptyFallback=None):
         modelConcept = xc.modelXbrl.qnameConcepts.get(qn)
         if modelConcept is not None:
             if property == "numeric": return modelConcept.isNumeric or modelConcept.isFraction
-            if property == "non-numeric": return modelConcept.isItem and not (modelConcept.isNumeric or modelConcept.isFraction)
+            if property == "non-numeric":
+                return (
+                    modelConcept.isItem
+                    and not modelConcept.isNumeric
+                    and not modelConcept.isFraction
+                )
             if property == "fraction": return modelConcept.isFraction
     return False
 
@@ -319,26 +310,25 @@ def uncovered_aspect(xc, p, args):
 
     checkXffFunctionUse(xc, p, "uncovered-aspect")
 
-    if aspect == Aspect.DIMENSIONS:
-        if qn:
-            modelConcept = xc.modelXbrl.qnameConcepts.get(qn)
-            if modelConcept is not None and modelConcept.isDimensionItem:
-                aspect = qn
-            else:
-                return ()   # not a dimension
-            dimValue = uncoveredAspectValue(xc, aspect)
-            if isinstance(dimValue, ModelDimensionValue):
-                if dimValue.isExplicit:
-                    return dimValue.memberQname
-                elif dimValue.isTyped:
-                    return dimValue     # return the typedMember element, not its contents
-            elif isinstance(dimValue, QName): # qname for explicit or node for typed
-                return dimValue
-            return ()
-    aspectValue = uncoveredAspectValue(xc, aspect)
-    if aspectValue is None:
+    if aspect == Aspect.DIMENSIONS and qn:
+        modelConcept = xc.modelXbrl.qnameConcepts.get(qn)
+        if modelConcept is not None and modelConcept.isDimensionItem:
+            aspect = qn
+        else:
+            return ()   # not a dimension
+        dimValue = uncoveredAspectValue(xc, aspect)
+        if isinstance(dimValue, ModelDimensionValue) and dimValue.isExplicit:
+            return dimValue.memberQname
+        elif (
+            isinstance(dimValue, ModelDimensionValue)
+            and dimValue.isTyped
+            or not isinstance(dimValue, ModelDimensionValue)
+            and isinstance(dimValue, QName)
+        ):
+            return dimValue     # return the typedMember element, not its contents
         return ()
-    return aspectValue
+    aspectValue = uncoveredAspectValue(xc, aspect)
+    return () if aspectValue is None else aspectValue
 
 def has_fallback_value(xc, p, args):
     from arelle.FormulaEvaluator import variableBindingIsFallback
@@ -409,10 +399,7 @@ def setsEqual(xc, args, test, mustBeItems=False):
             raise XPathContext.FunctionArgType(2,"xbrl:item*", errCode="xfie:NodeIsNotXbrlItem")
     if len(set(seq1)) != len(set(seq2)): # sequences can have nondistinct duplicates, just same set lengths needed
         return False
-    for node1 in seq1:
-        if not any(test(node1, node2) for node2 in seq2):
-            return False
-    return True
+    return all(any(test(node1, node2) for node2 in seq2) for node1 in seq1)
 
 def identical_nodes(xc, p, args):
     return nodesEqual(xc, args, identical_nodes_test)
@@ -502,9 +489,7 @@ def x_equal_test(node1, node2):
 def duplicate_item(xc, p, args):
     node1 = item(xc, args, 0)
     node2 = item(xc, args, 1)
-    if node1.isItem and node2.isItem:
-        return node1.isDuplicateOf(node2)
-    return False
+    return node1.isDuplicateOf(node2) if node1.isItem and node2.isItem else False
 
 def duplicate_tuple(xc, p, args):
     node1 = xbrlTuple(xc, args, 0)
@@ -512,9 +497,7 @@ def duplicate_tuple(xc, p, args):
     return duplicate_tuple_test(node1, node2)
 
 def duplicate_tuple_test(node1, node2, topLevel=True):
-    if node1.isTuple and node2.isTuple:
-        return node1.isDuplicateOf(node2)
-    return False
+    return node1.isDuplicateOf(node2) if node1.isTuple and node2.isTuple else False
 
 def p_equal(xc, p, args):
     return nodesEqual(xc, args, p_equal_test)
@@ -522,7 +505,7 @@ def p_equal(xc, p, args):
 def p_equal_test(node1, node2):
     if not isinstance(node1, (ModelFact, ModelInlineFact)) or not (node1.isItem or node1.isTuple):
         raise XPathContext.FunctionArgType(1,"xbrli:item or xbrli:tuple", errCode="xfie:ElementIsNotXbrlConcept")
-    if not isinstance(node2, (ModelFact, ModelInlineFact)) or not (node1.isItem or node1.isTuple):
+    if not isinstance(node2, (ModelFact, ModelInlineFact)):
         raise XPathContext.FunctionArgType(2,"xbrli:item or xbrli:tuple", errCode="xfie:ElementIsNotXbrlConcept")
     return node1.parentElement == node2.parentElement
 
@@ -571,8 +554,7 @@ def nodes_correspond(xc, p, args):
     node1 = nodeArg(xc, args, 0, "node()?", missingArgFallback=(), emptyFallback=())
     node2 = nodeArg(xc, args, 1, "node()?", missingArgFallback=(), emptyFallback=())
     if node1 == ():
-        if node2 == (): return True
-        return False
+        return node2 == ()
     if node2 == (): return False
     return XbrlUtil.nodesCorrespond(xc.modelXbrl, node1, node2, xc.modelXbrl)
 
@@ -677,7 +659,12 @@ def filter_member_network_selection(xc, p, args):
     linkroleURI = stringArg(xc, args, 2, "xs:string")
     arcroleURI = stringArg(xc, args, 3, "xs:string")
     axis = stringArg(xc, args, 4, "xs:string")
-    if not axis in ('descendant-or-self', 'child-or-self', 'descendant', 'child'):
+    if axis not in (
+        'descendant-or-self',
+        'child-or-self',
+        'descendant',
+        'child',
+    ):
         return ()
     dimConcept = xc.modelXbrl.qnameConcepts.get(qnDim)
     if dimConcept is None or not dimConcept.isDimensionItem:
@@ -737,7 +724,7 @@ def filter_member_DRS_selection(xc, p, args):
     if not linkroleURI:  # '' or ()
         linkroleURI = None  # select all ELRs
     axis = stringArg(xc, args, 4, "xs:string")
-    if not axis in ('DRS-descendant', 'DRS-child'):
+    if axis not in ('DRS-descendant', 'DRS-child'):
         return ()
     memSelectionQnames = set()
     dimConcept = xc.modelXbrl.qnameConcepts.get(qnDim)
@@ -757,9 +744,9 @@ def filter_member_DRS_selection(xc, p, args):
     for hcELR, hcRels in priItemElrHcRels(xc, priItemConcept, linkroleURI).items():
         if not linkroleURI or linkroleURI == hcELR:
             for hasHcRel in hcRels:
-                hcConcept = hasHcRel.toModelObject
                 if hasHcRel.arcrole == XbrlConst.all:
                     dimELR = (hasHcRel.targetRole or hcELR)
+                    hcConcept = hasHcRel.toModelObject
                     for hcDimRel in xc.modelXbrl.relationshipSet(XbrlConst.hypercubeDimension, dimELR).fromModelObject(hcConcept):
                         if dimConcept == hcDimRel.toModelObject:
                             filter_member_DRS_members(xc,
@@ -778,7 +765,7 @@ def filter_member_DRS_members(xc, fromRels, axis, memConcept, inSelection, visit
         toConcept = rel.toModelObject
         toConceptQname = toConcept.qname
         nestedSelection = inSelection
-        if rel.fromModelObject == memConcept or inSelection:  # from is the asked-for parent
+        if rel.fromModelObject == memConcept or nestedSelection:  # from is the asked-for parent
             memSelectionQnames.add(toConceptQname) # to is a child or descendant
             nestedSelection = True
         if toConceptQname not in visited and (not nestedSelection or axis == "DRS-descendant"):
@@ -918,14 +905,16 @@ def fact_explicit_dimensions(xc, p, args):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
     context = item_context(xc, args)
     if context is not None:
-        return set(qn for qn, dim in context.qnameDims.items() if dim.isExplicit) | xc.modelXbrl.qnameDimensionDefaults.keys()
+        return {
+            qn for qn, dim in context.qnameDims.items() if dim.isExplicit
+        } | xc.modelXbrl.qnameDimensionDefaults.keys()
     return set()
 
 def fact_typed_dimensions(xc, p, args):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
     context = item_context(xc, args)
     if context is not None:
-        return set(qn for qn, dim in context.qnameDims.items() if dim.isTyped)
+        return {qn for qn, dim in context.qnameDims.items() if dim.isTyped}
     return set()
 
 def fact_dimension_s_equal2(xc, p, args):
@@ -954,8 +943,7 @@ def linkbase_link_roles(xc, p, args):
     if len(args) > 2: raise XPathContext.FunctionNumArgs()
     inst = instance(xc, p, args, 1)
     arcroleURI = stringArg(xc, args, 0, "xs:string")
-    relationshipSet = inst.relationshipSet(arcroleURI)
-    if relationshipSet:
+    if relationshipSet := inst.relationshipSet(arcroleURI):
         return [anyURI(linkrole) for linkrole in relationshipSet.linkRoleUris]
     return ()
 
@@ -1012,8 +1000,7 @@ def fact_footnotes(xc, p, args):
     footnoteroleURI = stringArg(xc, args, 3, "xs:string", emptyFallback='')
     if not footnoteroleURI: footnoteroleURI = XbrlConst.footnote
     lang = stringArg(xc, args, 4, "xs:string", emptyFallback='')
-    relationshipSet = inst.relationshipSet(arcroleURI,linkroleURI)
-    if relationshipSet: # must return empty sequence, not None if no footnotes match filters
+    if relationshipSet := inst.relationshipSet(arcroleURI, linkroleURI):
         return relationshipSet.label(itemObj, footnoteroleURI, lang, returnMultiple=True) or ()
     return ()
 
@@ -1029,7 +1016,14 @@ def concept_relationships(xc, p, args, nestResults=False):
         linkroleURI = None
     arcroleURI = stringArg(xc, args, 2, "xs:string")
     axis = stringArg(xc, args, 3, "xs:string")
-    if not axis in ('descendant', 'child', 'ancestor', 'parent', 'sibling', 'sibling-or-self'):
+    if axis not in (
+        'descendant',
+        'child',
+        'ancestor',
+        'parent',
+        'sibling',
+        'sibling-or-self',
+    ):
         raise XPathContext.FunctionArgType(3, "'descendant', 'child', 'ancestor', 'parent', 'sibling' or 'sibling-or-self'",
                                            errCode="xfie:InvalidConceptRelationParameters")
     if qnSource != XbrlConst.qnXfiRoot:
@@ -1061,9 +1055,9 @@ def concept_relationships(xc, p, args, nestResults=False):
         qnArc = None
 
     removeSelf = axis == 'sibling'
-    relationshipSet = inst.relationshipSet(arcroleURI, linkroleURI, qnLink, qnArc)
-    if relationshipSet:
-        result = []
+    if relationshipSet := inst.relationshipSet(
+        arcroleURI, linkroleURI, qnLink, qnArc
+    ):
         visited = {qnSource}
         if qnSource == XbrlConst.qnXfiRoot:
             if axis in ('sibling', 'sibling-or-self', 'ancestor'):
@@ -1081,12 +1075,12 @@ def concept_relationships(xc, p, args, nestResults=False):
             rels = relationshipSet.toModelObject(srcConcept)
         elif axis in ('sibling', 'sibling-or-self'):
             rels = relationshipSet.toModelObject(srcConcept)
-            if rels:
-                rels = relationshipSet.fromModelObject(rels[0].fromModelObject)
-                axis = 'descendant'
-            else: # must be a root, never has any siblings
+            if not rels:
                 return []
+            rels = relationshipSet.fromModelObject(rels[0].fromModelObject)
+            axis = 'descendant'
         if rels:
+            result = []
             concept_relationships_step(xc, inst, relationshipSet, rels, axis, generations, result, visited, nestResults)
             if removeSelf:
                 for i, rel in enumerate(result):
@@ -1097,40 +1091,37 @@ def concept_relationships(xc, p, args, nestResults=False):
     return ()
 
 def concept_relationships_step(xc, inst, relationshipSet, rels, axis, generations, result, visited, nestResults):
-    if rels:
-        for modelRel in rels:
-            concept = modelRel.toModelObject if axis == 'descendant' else modelRel.fromModelObject
-            conceptQname = concept.qname
-            result.append(modelRel)
-            if generations > 1 or (generations == 0 and conceptQname not in visited):
-                nextGen = (generations - 1) if generations > 1 else 0
-                if generations == 0:
-                    visited.add(conceptQname)
-                if axis == 'descendant':
-                    if relationshipSet.arcrole == "XBRL-dimensions":
-                        stepRelationshipSet = inst.relationshipSet("XBRL-dimensions", modelRel.consecutiveLinkrole)
-                    else:
-                        stepRelationshipSet = relationshipSet
-                    stepRels = stepRelationshipSet.fromModelObject(concept)
+    if not rels:
+        return
+    for modelRel in rels:
+        concept = modelRel.toModelObject if axis == 'descendant' else modelRel.fromModelObject
+        conceptQname = concept.qname
+        result.append(modelRel)
+        if generations > 1 or (generations == 0 and conceptQname not in visited):
+            nextGen = (generations - 1) if generations > 1 else 0
+            if generations == 0:
+                visited.add(conceptQname)
+            if axis == 'descendant':
+                if relationshipSet.arcrole == "XBRL-dimensions":
+                    stepRelationshipSet = inst.relationshipSet("XBRL-dimensions", modelRel.consecutiveLinkrole)
                 else:
-                    if relationshipSet.arcrole == "XBRL-dimensions":
-                        stepRelationshipSet = inst.relationshipSet("XBRL-dimensions")
-                        # search all incoming relationships for those with right consecutiveLinkrole
-                        stepRels = [rel
-                                    for rel in stepRelationshipSet.toModelObject(concept)
-                                    if rel.consectuiveLinkrole == modelRel.linkrole]
-                    else:
-                        stepRelationshipSet = relationshipSet
-                        stepRels = stepRelationshipSet.toModelObject(concept)
-                if nestResults: # nested results are in a sub-list
-                    nestedList = []
-                else: # nested results flattened in top level results
-                    nestedList = result
-                concept_relationships_step(xc, inst, stepRelationshipSet, stepRels, axis, nextGen, nestedList, visited, nestResults)
-                if nestResults and nestedList:  # don't append empty nested results
-                    result.append(nestedList)
-                if generations == 0:
-                    visited.discard(conceptQname)
+                    stepRelationshipSet = relationshipSet
+                stepRels = stepRelationshipSet.fromModelObject(concept)
+            elif relationshipSet.arcrole == "XBRL-dimensions":
+                stepRelationshipSet = inst.relationshipSet("XBRL-dimensions")
+                # search all incoming relationships for those with right consecutiveLinkrole
+                stepRels = [rel
+                            for rel in stepRelationshipSet.toModelObject(concept)
+                            if rel.consectuiveLinkrole == modelRel.linkrole]
+            else:
+                stepRelationshipSet = relationshipSet
+                stepRels = stepRelationshipSet.toModelObject(concept)
+            nestedList = [] if nestResults else result
+            concept_relationships_step(xc, inst, stepRelationshipSet, stepRels, axis, nextGen, nestedList, visited, nestResults)
+            if nestResults and nestedList:  # don't append empty nested results
+                result.append(nestedList)
+            if generations == 0:
+                visited.discard(conceptQname)
 
 def relationship_from_concept(xc, p, args):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
@@ -1157,8 +1148,7 @@ def distinct_nonAbstract_parent_concepts(xc, p, args):
     # TBD allow instance as arg 2
 
     result = set()
-    relationshipSet = inst.relationshipSet(arcroleURI, linkroleURI)
-    if relationshipSet:
+    if relationshipSet := inst.relationshipSet(arcroleURI, linkroleURI):
         for rel in relationshipSet.modelRelationships:
             fromModelObject = rel.fromModelObject
             toModelObject = rel.toModelObject
@@ -1232,12 +1222,10 @@ def  format_number(xc, p, args):
         raise XPathContext.XPathException(p, 'xfie:invalidPictureSyntax', str(err) )
 
 # note that this function was initially in plugin functionsXmlCreation when it was named xfxc:element
-def  create_element(xc, p, args):
+def create_element(xc, p, args):
     if not 2 <= len(args) <= 4: raise XPathContext.FunctionNumArgs()
     qn = qnameArg(xc, p, args, 0, 'QName', emptyFallback=None)
-    attrArg = flattenSequence(args[1])
-    # attributes have to be pairs
-    if attrArg:
+    if attrArg := flattenSequence(args[1]):
         if (len(attrArg) & 1 or
             any((not isinstance(arg, (QName, str))) or
                 (isinstance(arg,str) and NCNamePattern.match(arg) is None)
@@ -1253,10 +1241,7 @@ def  create_element(xc, p, args):
     value = atomicArg(xc, p, args, 2, "xs:anyAtomicType", emptyFallback='')
     if not value: # be sure '' is None so no text node is created
         value = None
-    if len(args) < 4:
-        childElements = None
-    else:
-        childElements = xc.flattenSequence(args[3])
+    childElements = None if len(args) < 4 else xc.flattenSequence(args[3])
     if value and childElements:
         raise XPathContext.FunctionArgType(1,str(value), errCode="xfie:MixedContentError")
 
@@ -1303,74 +1288,119 @@ def unique_identifiers(xc, p, args):
 
 def single_unique_identifier(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    return len(set(cntx.entityIdentifier for cntx in xc.modelXbrl.contextsInUse)) == 1
+    return len({cntx.entityIdentifier for cntx in xc.modelXbrl.contextsInUse}) == 1
 
 def any_start_date(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    for cntx in xc.modelXbrl.contextsInUse:
-        if cntx.isStartEndPeriod:
-            return cntx.startDatetime
-    return ()
+    return next(
+        (
+            cntx.startDatetime
+            for cntx in xc.modelXbrl.contextsInUse
+            if cntx.isStartEndPeriod
+        ),
+        (),
+    )
 
 def unique_start_dates(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    distinctStartDates = set()
-    for cntx in xc.modelXbrl.contextsInUse:
-        if cntx.isStartEndPeriod:
-            distinctStartDates.add(cntx.startDatetime)
+    distinctStartDates = {
+        cntx.startDatetime
+        for cntx in xc.modelXbrl.contextsInUse
+        if cntx.isStartEndPeriod
+    }
     return [sorted(distinctStartDates, key=lambda d:(d.tzinfo is None,d))]
 
 def single_unique_start_date(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    return len(set(cntx.startDatetime for cntx in xc.modelXbrl.contextsInUse if cntx.isStartEndPeriod)) == 1
+    return (
+        len(
+            {
+                cntx.startDatetime
+                for cntx in xc.modelXbrl.contextsInUse
+                if cntx.isStartEndPeriod
+            }
+        )
+        == 1
+    )
 
 def any_end_date(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    for cntx in xc.modelXbrl.contextsInUse:
-        if cntx.isStartEndPeriod:
-            return cntx.endDatetime
-    return ()
+    return next(
+        (
+            cntx.endDatetime
+            for cntx in xc.modelXbrl.contextsInUse
+            if cntx.isStartEndPeriod
+        ),
+        (),
+    )
 
 def unique_end_dates(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    distinctStartDates = set()
-    for cntx in xc.modelXbrl.contextsInUse:
-        if cntx.isStartEndPeriod:
-            distinctStartDates.add(cntx.endDatetime)
+    distinctStartDates = {
+        cntx.endDatetime
+        for cntx in xc.modelXbrl.contextsInUse
+        if cntx.isStartEndPeriod
+    }
     return [sorted(distinctStartDates, key=lambda d:(d.tzinfo is None,d))]
 
 def single_unique_end_date(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    return len(set(cntx.endDatetime for cntx in xc.modelXbrl.contextsInUse if cntx.isStartEndPeriod)) == 1
+    return (
+        len(
+            {
+                cntx.endDatetime
+                for cntx in xc.modelXbrl.contextsInUse
+                if cntx.isStartEndPeriod
+            }
+        )
+        == 1
+    )
 
 def any_instant_date(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    for cntx in xc.modelXbrl.contextsInUse:
-        if cntx.isInstantPeriod:
-            return cntx.instantDatetime
-    return ()
+    return next(
+        (
+            cntx.instantDatetime
+            for cntx in xc.modelXbrl.contextsInUse
+            if cntx.isInstantPeriod
+        ),
+        (),
+    )
 
 def unique_instant_dates(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    distinctStartDates = set()
-    for cntx in xc.modelXbrl.contextsInUse:
-        if cntx.isInstantPeriod:
-            distinctStartDates.add(cntx.instantDatetime)
+    distinctStartDates = {
+        cntx.instantDatetime
+        for cntx in xc.modelXbrl.contextsInUse
+        if cntx.isInstantPeriod
+    }
     return [sorted(distinctStartDates, key=lambda d:(d.tzinfo is None,d))]
 
 def single_unique_instant_date(xc, p, args):
     if len(args) != 0: raise XPathContext.FunctionNumArgs()
-    return len(set(cntx.instantDatetime for cntx in xc.modelXbrl.contextsInUse if cntx.isInstantPeriod)) == 1
+    return (
+        len(
+            {
+                cntx.instantDatetime
+                for cntx in xc.modelXbrl.contextsInUse
+                if cntx.isInstantPeriod
+            }
+        )
+        == 1
+    )
 
 def filingIndicatorValues(inst, filedValue):
-    filingIndicators = set()
-    for fact in inst.factsByQname[XbrlConst.qnEuFiIndFact]:
-        if fact.parentElement.qname == XbrlConst.qnEuFiTuple and fact.get(XbrlConst.cnEuFiIndAttr,"true") == filedValue:
-            filingIndicators.add(fact.stringValue.strip())
+    filingIndicators = {
+        fact.stringValue.strip()
+        for fact in inst.factsByQname[XbrlConst.qnEuFiIndFact]
+        if fact.parentElement.qname == XbrlConst.qnEuFiTuple
+        and fact.get(XbrlConst.cnEuFiIndAttr, "true") == filedValue
+    }
     for fact in inst.factsByQname[XbrlConst.qnFiFact]:
         if fact.context is not None and XbrlConst.qnFiDim in fact.context.qnameDims and fact.value.strip() == filedValue:
-            fiValue = fact.context.qnameDims[XbrlConst.qnFiDim].stringValue.strip()
-            if fiValue:
+            if fiValue := fact.context.qnameDims[
+                XbrlConst.qnFiDim
+            ].stringValue.strip():
                 filingIndicators.add(fiValue)
     return filingIndicators
 

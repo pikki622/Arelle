@@ -27,8 +27,8 @@ class DialogArcroleGroup(Toplevel):
         self.parent = parent
         self.modelXbrl = modelXbrl
         parentGeometry = re.match("(\d+)x(\d+)[+]?([-]?\d+)[+]?([-]?\d+)", parent.geometry())
-        dialogX = int(parentGeometry.group(3))
-        dialogY = int(parentGeometry.group(4))
+        dialogX = int(parentGeometry[3])
+        dialogY = int(parentGeometry[4])
         self.selectedGroup = None
 
         self.transient(self.parent)
@@ -125,10 +125,9 @@ class DialogArcroleGroup(Toplevel):
         self.wait_window(self)
 
     def ok(self, event=None):
-        groupName = self.groupName.value
-        arcrolesSelected = [checkbox.attr for checkbox in self.checkboxes if checkbox.value]
-        if groupName:
+        if groupName := self.groupName.value:
             self.mainWin.config["arcroleGroupSelected"] = groupName
+            arcrolesSelected = [checkbox.attr for checkbox in self.checkboxes if checkbox.value]
             if groupName not in self.arcroleGroups or any(checkbox.isChanged for checkbox in self.checkboxes):
                 self.arcroleGroups[groupName] = arcrolesSelected
                 self.mainWin.config["arcroleGroups"] = self.arcroleGroups

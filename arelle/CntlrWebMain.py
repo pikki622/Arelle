@@ -28,10 +28,12 @@ def startWebserver(_cntlr, options):
     cntlr = _cntlr
     imagesDir = cntlr.imagesDir
     optionValuesTypes = STR_NUM_TYPES + (type(None),)
-    optionsPrototype = dict((option,value if isinstance(value, STR_NUM_TYPES) else None)
-                            for option in dir(options)
-                            for value in (getattr(options, option),)
-                            if isinstance(value,optionValuesTypes) and not option.startswith('_'))
+    optionsPrototype = {
+        option: value if isinstance(value, STR_NUM_TYPES) else None
+        for option in dir(options)
+        for value in (getattr(options, option),)
+        if isinstance(value, optionValuesTypes) and not option.startswith('_')
+    }
     host, sep, portServer = options.webserver.partition(":")
     port, sep, server = portServer.partition(":")
     # start a Bottle application
@@ -110,7 +112,7 @@ def cgiInterface(cgiAppPath):
     if not request.query:  # no parameters, index page
         return indexPageCGI()
     elif 'about' in request.query:
-        return about(cgiAppPath + "?image=arelle32.gif")
+        return about(f"{cgiAppPath}?image=arelle32.gif")
     elif 'help' in request.query:
         return helpREST()
     elif 'image' in request.query:
@@ -219,7 +221,10 @@ def validation(file=None):
     flavor = request.query.flavor or 'standard'
     media = request.query.media or 'html'
     requestPathParts = request.urlparts[2].split('/')
-    isValidation = 'validation' == requestPathParts[-1] or 'validation' == requestPathParts[-2]
+    isValidation = (
+        requestPathParts[-1] == 'validation'
+        or requestPathParts[-2] == 'validation'
+    )
     view = request.query.view
     viewArcrole = request.query.viewArcrole
     if request.method == 'POST':
@@ -236,9 +241,8 @@ def validation(file=None):
         sourceZipStream = request.body
     else:
         sourceZipStream = None
-    if not view and not viewArcrole:
-        if requestPathParts[-1] in supportedViews:
-            view = requestPathParts[-1]
+    if not view and not viewArcrole and requestPathParts[-1] in supportedViews:
+        view = requestPathParts[-1]
     if isValidation:
         if view or viewArcrole:
             errors.append(_("Only validation or one view can be specified in one requested."))
@@ -293,7 +297,7 @@ def validation(file=None):
             setattr(options, "validate", True)
     elif view:
         viewFile = FileNamedStringIO(media)
-        setattr(options, view + "File", viewFile)
+        setattr(options, f"{view}File", viewFile)
     elif viewArcrole:
         viewFile = FileNamedStringIO(media)
         setattr(options, "viewArcrole", viewArcrole)
@@ -447,7 +451,7 @@ def quickbooksGLrequest(qbReport=None, file=None):
     from arelle.ModelValue import dateTime
     errors = []
     requestPathParts = request.urlparts[2].split('/')
-    viewRequested = "view" == requestPathParts[-1]
+    viewRequested = requestPathParts[-1] == "view"
     media = request.query.media or 'html'
     fromDate = request.query.fromDate
     toDate = request.query.toDate
@@ -463,15 +467,22 @@ def quickbooksGLrequest(qbReport=None, file=None):
     if errors:
         return errorReport(errors, media)
     ticket = qbRequest(qbReport, fromDate, toDate, file)
-    result = htmlBody(tableRows([_("Request queued for QuickBooks...")], header=_("Quickbooks Request")), script='''
+    return htmlBody(
+        tableRows(
+            [_("Request queued for QuickBooks...")],
+            header=_("Quickbooks Request"),
+        ),
+        script='''
 <script type="text/javascript">
 <!--
 var timer = setInterval("autoRefresh()", 1000 * 10);
 function autoRefresh(){{location.href = "/rest/quickbooks/response?ticket={0}&media={1}&view={2}";}}
 //-->
 </script>
-'''.format(ticket, media, viewRequested))
-    return result
+'''.format(
+            ticket, media, viewRequested
+        ),
+    )
 
 def quickbooksGLresponse():
     """Poll for QuickBooks protocol responses for *get* requests to */rest/quickbooks/response*.
@@ -834,8 +845,12 @@ def tableRows(lines, header=None):
     :returns: html - <table> html string.
     """
     return '<table cellspacing="0" cellpadding="4">%s\n</table>' % (
-            ("<tr><th>%s</th></tr>" % header if header else "") +
-            "\n".join("<tr><td>%s</td></tr>" % line.replace("&","&amp;").replace("<","&lt;") for line in lines))
+        (f"<tr><th>{header}</th></tr>" if header else "")
+        + "\n".join(
+            f'<tr><td>{line.replace("&", "&amp;").replace("<", "&lt;")}</td></tr>'
+            for line in lines
+        )
+    )
 
 def errorReport(errors, media="html"):
     """Wraps lines of error text into specified media type for return of result to a request.
@@ -855,17 +870,23 @@ def errorReport(errors, media="html"):
 
 def multipartResponse(parts):
     # call with ( (filename, contentType, content), ...)
-    boundary='----multipart-boundary-%s----' % (uuid.uuid1(),)
-    response.content_type = 'multipart/mixed; boundary=%s' % (boundary,)
+    boundary = f'----multipart-boundary-{uuid.uuid1()}----'
+    response.content_type = f'multipart/mixed; boundary={boundary}'
     buf = []
 
     for filename, contentType, content in parts:
-        buf.append("\r\n" + boundary + "\r\n")
-        buf.append('Content-Disposition: attachment; filename="{0}";\r\n'.format(filename))
-        buf.append('Content-Type: {0};\r\n'.format(contentType))
-        buf.append('Content-Length: {0}\r\n'.format(len(content)))
-        buf.append('\r\n')
-        buf.append(content)
+        buf.extend(
+            (
+                "\r\n" + boundary + "\r\n",
+                'Content-Disposition: attachment; filename="{0}";\r\n'.format(
+                    filename
+                ),
+                'Content-Type: {0};\r\n'.format(contentType),
+                'Content-Length: {0}\r\n'.format(len(content)),
+                '\r\n',
+                content,
+            )
+        )
     buf.append("\r\n" + boundary + "\r\n")
     s = ''.join(buf)
     response.content_length = len(s)

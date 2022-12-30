@@ -37,10 +37,7 @@ def call(xc, p, localname, args):
         if localname not in xsFunctions: raise xsFunctionNotAvailable
         return xsFunctions[localname](xc, p, source)
     except (FORG0001, ValueError, TypeError) as ex:
-        if hasattr(ex, "message") and ex.message:
-            exMsg = ", " + ex.message
-        else:
-            exMsg = ""
+        exMsg = f", {ex.message}" if hasattr(ex, "message") and ex.message else ""
         raise XPathContext.XPathException(p, 'err:FORG0001',
                                           _('invalid cast from {0} to xs:{1}{2}').format(
                                             type(source).__name__,
@@ -257,8 +254,7 @@ def positiveInteger(xc, p, source):
 
 def gYearMonth(xc, p, source):
     try:
-        match = lexicalPatterns['gYearMonth'].match(source)
-        if match:
+        if match := lexicalPatterns['gYearMonth'].match(source):
             year, month, zSign, zHrMin, zHr, zMin = match.groups()
             return ModelValue.gYearMonth(year, month)
     except (ValueError, TypeError):
@@ -267,8 +263,7 @@ def gYearMonth(xc, p, source):
 
 def gYear(xc, p, source):
     try:
-        match = lexicalPatterns['gYear'].match(source)
-        if match:
+        if match := lexicalPatterns['gYear'].match(source):
             year, zSign, zHrMin, zHr, zMin = match.groups()
             return ModelValue.gYear(year)
     except (ValueError, TypeError):
@@ -277,10 +272,25 @@ def gYear(xc, p, source):
 
 def gMonthDay(xc, p, source):
     try:
-        match = lexicalPatterns['gMonthDay'].match(source)
-        if match:
+        if match := lexicalPatterns['gMonthDay'].match(source):
             month, day, zSign, zHrMin, zHr, zMin = match.groups()
-            if not int(day) > {2:29, 4:30, 6:30, 9:30, 11:30, 1:31, 3:31, 5:31, 7:31, 8:31, 10:31, 12:31}[int(month)]:
+            if (
+                int(day)
+                <= {
+                    2: 29,
+                    4: 30,
+                    6: 30,
+                    9: 30,
+                    11: 30,
+                    1: 31,
+                    3: 31,
+                    5: 31,
+                    7: 31,
+                    8: 31,
+                    10: 31,
+                    12: 31,
+                }[int(month)]
+            ):
                 return ModelValue.gMonthDay(month, day)
     except (ValueError, TypeError):
         pass
@@ -288,8 +298,7 @@ def gMonthDay(xc, p, source):
 
 def gDay(xc, p, source):
     try:
-        match = lexicalPatterns['gDay'].match(source)
-        if match:
+        if match := lexicalPatterns['gDay'].match(source):
             day, zSign, zHrMin, zHr, zMin = match.groups()
             return ModelValue.gDay(day)
     except (ValueError, TypeError):
@@ -298,8 +307,7 @@ def gDay(xc, p, source):
 
 def gMonth(xc, p, source):
     try:
-        match = lexicalPatterns['gMonth'].match(source)
-        if match:
+        if match := lexicalPatterns['gMonth'].match(source):
             month, zSign, zHrMin, zHr, zMin = match.groups()
             return ModelValue.gMonth(month)
     except (ValueError, TypeError):
@@ -321,9 +329,7 @@ def xsString(xc, p, source):
             s =
         '''
         s = str(source)
-        if s.endswith(".0"):
-            s = s[:-2]
-        return s
+        return s.removesuffix(".0")
     elif isinstance(source,Decimal):
         if isnan(source):
             return "NaN" # note that -NaN is reported as NaN in XML

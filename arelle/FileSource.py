@@ -1,6 +1,7 @@
 '''
 See COPYRIGHT.md for copyright information.
 '''
+
 from __future__ import annotations
 from typing import IO, TYPE_CHECKING, Any, Union, cast
 import zipfile, tarfile, os, io, errno, base64, gzip, zlib, re, struct, random
@@ -19,13 +20,33 @@ if TYPE_CHECKING:
     from _typeshed import SupportsRead
 
 
-archivePathSeparators = (".zip" + os.sep, ".tar.gz" + os.sep, ".eis" + os.sep, ".xml" + os.sep, ".xfd" + os.sep, ".frm" + os.sep, '.taxonomyPackage.xml' + os.sep) + \
-                        ((".zip/", ".tar.gz/", ".eis/", ".xml/", ".xfd/", ".frm/", '.taxonomyPackage.xml/') if os.sep != "/" else ()) #acomodate windows and http styles
+archivePathSeparators = (
+    (
+        f".zip{os.sep}",
+        f".tar.gz{os.sep}",
+        f".eis{os.sep}",
+        f".xml{os.sep}",
+        f".xfd{os.sep}",
+        f".frm{os.sep}",
+        f'.taxonomyPackage.xml{os.sep}',
+    )
+    + (
+        ".zip/",
+        ".tar.gz/",
+        ".eis/",
+        ".xml/",
+        ".xfd/",
+        ".frm/",
+        '.taxonomyPackage.xml/',
+    )
+    if os.sep != "/"
+    else ()
+)
 
 archiveFilenameSuffixes = {".zip", ".tar.gz", ".eis", ".xml", ".xfd", ".frm"}
 
-POST_UPLOADED_ZIP = os.sep + "POSTupload.zip"
-SERVER_WEB_CACHE = os.sep + "_HTTP_CACHE"
+POST_UPLOADED_ZIP = f"{os.sep}POSTupload.zip"
+SERVER_WEB_CACHE = f"{os.sep}_HTTP_CACHE"
 
 XMLdeclaration = re.compile(r"<\?xml[^><\?]*\?>", re.DOTALL)
 
@@ -142,7 +163,7 @@ class FileSource:
     xfdDocument: etree._ElementTree | None
 
     def __init__(self, url: str, cntlr: Cntlr | None = None, checkIfXmlIsEis: bool = False) -> None:
-        self.url = str(url)  # allow either string or FileNamedStringIO
+        self.url = url
         self.baseIsHttp = isHttpUrl(self.url)
         self.cntlr = cntlr
         self.type = self.url.lower()[-7:]
@@ -152,7 +173,7 @@ class FileSource:
         self.isZip = self.type == ".zip"
         self.isZipBackslashed = False # windows style backslashed paths
         self.isEis = self.type == ".eis"
-        self.isXfd = (self.type == ".xfd" or self.type == ".frm")
+        self.isXfd = self.type in [".xfd", ".frm"]
         self.isRss = (self.type == ".rss" or self.url.endswith(".rss.xml"))
         self.isInstalledTaxonomyPackage = False
         self.isOpen = False
@@ -164,8 +185,13 @@ class FileSource:
         self.mappedPaths = None  # remappings of path segments may be loaded by taxonomyPackage manifest
 
         # for SEC xml files, check if it's an EIS anyway
-        if (not (self.isZip or self.isEis or self.isXfd or self.isRss) and
-            self.type == ".xml"):
+        if (
+            not self.isZip
+            and not self.isEis
+            and not self.isXfd
+            and not self.isRss
+            and self.type == ".xml"
+        ):
             if os.path.split(self.url)[-1] in TAXONOMY_PACKAGE_FILE_NAMES:
                 self.isInstalledTaxonomyPackage = True
             elif checkIfXmlIsEis:
@@ -173,55 +199,52 @@ class FileSource:
                     assert self.cntlr is not None
                     _filename = self.cntlr.webCache.getfilename(self.url)
                     assert _filename is not None
-                    file = open(_filename, 'r', errors='replace')
-                    l = file.read(256) # may have comments before first element
-                    file.close()
+                    with open(_filename, 'r', errors='replace') as file:
+                        l = file.read(256) # may have comments before first element
                     if re.match(r"\s*(<[?]xml[^?]+[?]>)?\s*(<!--.*-->\s*)*<(cor[a-z]*:|sdf:)?edgarSubmission", l):
                         self.isEis = True
                 except EnvironmentError as err:
                     if self.cntlr:
                         self.cntlr.addToLog(_("[{0}] {1}").format(type(err).__name__, err))
-                    pass
 
     def logError(self, err: Exception) -> None:
         if self.cntlr:
             self.cntlr.addToLog(_("[{0}] {1}").format(type(err).__name__, err))
 
     def open(self, reloadCache: bool = False) -> None:
-        if not self.isOpen:
-            if (self.isZip or self.isTarGz or self.isEis or self.isXfd or self.isRss or self.isInstalledTaxonomyPackage) and self.cntlr:
-                assert self.url is not None
-                assert isinstance(self.url, str)
-                self.basefile = self.cntlr.webCache.getfilename(self.url, reload=reloadCache)
-            else:
-                self.basefile = self.url
-            self.baseurl = self.url # url gets changed by selection
-            if not self.basefile:
-                return  # an error should have been logged
-            if self.isZip:
-                try:
-                    assert self.cntlr is not None
-                    assert isinstance(self.basefile, str)
-                    fileStream = openFileStream(self.cntlr, self.basefile, 'rb')
-                    self.fs = zipfile.ZipFile(fileStream, mode="r")
-                    self.isOpen = True
-                except EnvironmentError as err:
-                    self.logError(err)
-                    pass
-            elif self.isTarGz:
-                try:
-                    assert isinstance(self.basefile, str)
-                    self.fs = tarfile.open(self.basefile, "r:gz")
-                    self.isOpen = True
-                except EnvironmentError as err:
-                    self.logError(err)
-                    pass
-            elif self.isEis:
-                # check first line of file
-                buf = b''
-                try:
-                    assert isinstance(self.basefile, str)
-                    file: io.BufferedReader | io.BytesIO | io.StringIO | None = open(self.basefile, 'rb')
+        if self.isOpen:
+            return
+        if (self.isZip or self.isTarGz or self.isEis or self.isXfd or self.isRss or self.isInstalledTaxonomyPackage) and self.cntlr:
+            assert self.url is not None
+            assert isinstance(self.url, str)
+            self.basefile = self.cntlr.webCache.getfilename(self.url, reload=reloadCache)
+        else:
+            self.basefile = self.url
+        self.baseurl = self.url # url gets changed by selection
+        if not self.basefile:
+            return  # an error should have been logged
+        if self.isZip:
+            try:
+                assert self.cntlr is not None
+                assert isinstance(self.basefile, str)
+                fileStream = openFileStream(self.cntlr, self.basefile, 'rb')
+                self.fs = zipfile.ZipFile(fileStream, mode="r")
+                self.isOpen = True
+            except EnvironmentError as err:
+                self.logError(err)
+        elif self.isTarGz:
+            try:
+                assert isinstance(self.basefile, str)
+                self.fs = tarfile.open(self.basefile, "r:gz")
+                self.isOpen = True
+            except EnvironmentError as err:
+                self.logError(err)
+        elif self.isEis:
+            # check first line of file
+            buf = b''
+            try:
+                assert isinstance(self.basefile, str)
+                with open(self.basefile, 'rb') as file:
                     assert file is not None
                     assert isinstance(file, io.BytesIO)
                     more = True
@@ -232,120 +255,123 @@ class FileSource:
                         if len(buf) == 0 and l.startswith(b"<?xml "): # not compressed
                             buf = l + file.read()  # not compressed
                             break
-                        compressedBytes = file.read( struct.unpack(">L", l[0:4])[0])
+                        compressedBytes = file.read(struct.unpack(">L", l[:4])[0])
                         if len(compressedBytes) <= 0:
                             break
                         buf += zlib.decompress(compressedBytes)
-                    file.close()
+            except EnvironmentError as err:
+                self.logError(err)
+            #uncomment to save for debugging
+            #with open("c:/temp/test.xml", "wb") as f:
+            #    f.write(buf)
+
+            if buf.startswith(b"<?xml "):
+                try:
+                    # must strip encoding
+                    _str = buf.decode(XmlUtil.encoding(buf))
+                    endEncoding = _str.index("?>", 0, 128)
+                    if endEncoding > 0:
+                        _str = _str[endEncoding+2:]
+                    _file = io.StringIO(initial_value=_str)
+                    parser = etree.XMLParser(recover=True, huge_tree=True)
+                    self.eisDocument = etree.parse(_file, parser=parser)
+                    _file.close()
+                    self.isOpen = True
                 except EnvironmentError as err:
                     self.logError(err)
-                    pass
-                #uncomment to save for debugging
-                #with open("c:/temp/test.xml", "wb") as f:
-                #    f.write(buf)
+                    return # provide error message later
+                except etree.LxmlError as err:
+                    self.logError(err)
+                    return # provide error message later
 
-                if buf.startswith(b"<?xml "):
+        elif self.isXfd:
+            # check first line of file
+            assert isinstance(self.basefile, str)
+            file = open(self.basefile, 'rb')
+            firstline = file.readline()
+            if firstline.startswith(b"application/x-xfdl;content-encoding=\"asc-gzip\""):
+                # file has been gzipped
+                base64input = file.read(-1)
+                file.close()
+                file = None
+
+                fb = base64.b64decode(base64input)
+                ungzippedBytes = b""
+                totalLenUncompr = 0
+                i = 0
+                while i < len(fb):
+                    lenCompr = fb[i + 0] * 256 + fb[i + 1]
+                    lenUncomp = fb[i + 2] * 256 + fb[i + 3]
+                    lenRead = 0
+                    totalLenUncompr += lenUncomp
+
+                    gzchunk = (bytes((31,139,8,0)) + fb[i:i+lenCompr])
                     try:
-                        # must strip encoding
-                        _str = buf.decode(XmlUtil.encoding(buf))
-                        endEncoding = _str.index("?>", 0, 128)
-                        if endEncoding > 0:
-                            _str = _str[endEncoding+2:]
-                        _file = io.StringIO(initial_value=_str)
-                        parser = etree.XMLParser(recover=True, huge_tree=True)
-                        self.eisDocument = etree.parse(_file, parser=parser)
-                        _file.close()
-                        self.isOpen = True
-                    except EnvironmentError as err:
-                        self.logError(err)
-                        return # provide error message later
-                    except etree.LxmlError as err:
-                        self.logError(err)
-                        return # provide error message later
+                        with gzip.GzipFile(fileobj=io.BytesIO(gzchunk)) as gf:
+                            while True:
+                                readSize = min(16384, lenUncomp - lenRead)
+                                readBytes = gf.read(size=readSize)
+                                lenRead += len(readBytes)
+                                ungzippedBytes += readBytes
+                                if len(readBytes) == 0 or (lenUncomp - lenRead) <= 0:
+                                    break
+                    except IOError as err:
+                        pass # provide error message later
 
-            elif self.isXfd:
-                # check first line of file
-                assert isinstance(self.basefile, str)
-                file = open(self.basefile, 'rb')
-                firstline = file.readline()
-                if firstline.startswith(b"application/x-xfdl;content-encoding=\"asc-gzip\""):
-                    # file has been gzipped
-                    base64input = file.read(-1)
-                    file.close()
-                    file = None
+                    i += lenCompr + 4
+                #for learning the content of xfd file, uncomment this:
+                #with open("c:\\temp\\test.xml", "wb") as fh:
+                #    fh.write(ungzippedBytes)
+                file = io.StringIO(initial_value=ungzippedBytes.decode("utf-8"))
+            else:
+                # position to start of file
+                assert file is not None
+                file.seek(0,io.SEEK_SET)
 
-                    fb = base64.b64decode(base64input)
-                    ungzippedBytes = b""
-                    totalLenUncompr = 0
-                    i = 0
-                    while i < len(fb):
-                        lenCompr = fb[i + 0] * 256 + fb[i + 1]
-                        lenUncomp = fb[i + 2] * 256 + fb[i + 3]
-                        lenRead = 0
-                        totalLenUncompr += lenUncomp
-
-                        gzchunk = (bytes((31,139,8,0)) + fb[i:i+lenCompr])
-                        try:
-                            with gzip.GzipFile(fileobj=io.BytesIO(gzchunk)) as gf:
-                                while True:
-                                    readSize = min(16384, lenUncomp - lenRead)
-                                    readBytes = gf.read(size=readSize)
-                                    lenRead += len(readBytes)
-                                    ungzippedBytes += readBytes
-                                    if len(readBytes) == 0 or (lenUncomp - lenRead) <= 0:
-                                        break
-                        except IOError as err:
-                            pass # provide error message later
-
-                        i += lenCompr + 4
-                    #for learning the content of xfd file, uncomment this:
-                    #with open("c:\\temp\\test.xml", "wb") as fh:
-                    #    fh.write(ungzippedBytes)
-                    file = io.StringIO(initial_value=ungzippedBytes.decode("utf-8"))
-                else:
-                    # position to start of file
-                    assert file is not None
-                    file.seek(0,io.SEEK_SET)
-
-                try:
-                    self.xfdDocument = etree.parse(file)
-                    file.close()
-                    self.isOpen = True
-                except EnvironmentError as err:
-                    self.logError(err)
-                    return # provide error message later
-                except etree.LxmlError as err:
-                    self.logError(err)
-                    return # provide error message later
-
-            elif self.isRss:
-                try:
-                    assert isinstance(self.basefile, str)
-                    self.rssDocument = etree.parse(self.basefile)
-                    self.isOpen = True
-                except EnvironmentError as err:
-                    self.logError(err)
-                    return # provide error message later
-                except etree.LxmlError as err:
-                    self.logError(err)
-                    return # provide error message later
-
-            elif self.isInstalledTaxonomyPackage:
+            try:
+                self.xfdDocument = etree.parse(file)
+                file.close()
                 self.isOpen = True
-                # load mappings
-                self.loadTaxonomyPackageMappings()
+            except EnvironmentError as err:
+                self.logError(err)
+                return # provide error message later
+            except etree.LxmlError as err:
+                self.logError(err)
+                return # provide error message later
+
+        elif self.isRss:
+            try:
+                assert isinstance(self.basefile, str)
+                self.rssDocument = etree.parse(self.basefile)
+                self.isOpen = True
+            except EnvironmentError as err:
+                self.logError(err)
+                return # provide error message later
+            except etree.LxmlError as err:
+                self.logError(err)
+                return # provide error message later
+
+        elif self.isInstalledTaxonomyPackage:
+            self.isOpen = True
+            # load mappings
+            self.loadTaxonomyPackageMappings()
 
     def loadTaxonomyPackageMappings(self, errors: list[str] = [], expectTaxonomyPackage: bool = False) -> None:
-        if not self.mappedPaths and (self.taxonomyPackageMetadataFiles or expectTaxonomyPackage):
-            if PackageManager.validateTaxonomyPackage(self.cntlr, self, errors=errors):
-                assert isinstance(self.baseurl, str)
-                metadata = self.baseurl + os.sep + self.taxonomyPackageMetadataFiles[0]
-                self.taxonomyPackage = PackageManager.parsePackage(self.cntlr, self, metadata,  # type: ignore[no-untyped-call]
-                                                                   os.sep.join(os.path.split(metadata)[:-1]) + os.sep,
-                                                                   errors=errors)
+        if (
+            not self.mappedPaths
+            and (self.taxonomyPackageMetadataFiles or expectTaxonomyPackage)
+            and PackageManager.validateTaxonomyPackage(
+                self.cntlr, self, errors=errors
+            )
+        ):
+            assert isinstance(self.baseurl, str)
+            metadata = self.baseurl + os.sep + self.taxonomyPackageMetadataFiles[0]
+            self.taxonomyPackage = PackageManager.parsePackage(self.cntlr, self, metadata,  # type: ignore[no-untyped-call]
+                                                               os.sep.join(os.path.split(metadata)[:-1]) + os.sep,
+                                                               errors=errors)
 
-                assert self.taxonomyPackage is not None
-                self.mappedPaths = self.taxonomyPackage.get("remappings")
+            assert self.taxonomyPackage is not None
+            self.mappedPaths = self.taxonomyPackage.get("remappings")
 
     def openZipStream(self, sourceZipStream: str) -> None:
         if not self.isOpen:
@@ -455,10 +481,11 @@ class FileSource:
                 referencedFileSource = self.referencedFileSources[referencedArchiveFile]
                 if referencedFileSource.isInArchive(filepath):
                     return referencedFileSource
-            elif (not self.isOpen or
-                  (referencedArchiveFile != self.basefile and referencedArchiveFile != self.baseurl)):
-                referencedFileSource = openFileSource(filepath, self.cntlr)
-                if referencedFileSource:
+            elif not self.isOpen or referencedArchiveFile not in [
+                self.basefile,
+                self.baseurl,
+            ]:
+                if referencedFileSource := openFileSource(filepath, self.cntlr):
                     self.referencedFileSources[referencedArchiveFile] = referencedFileSource
         return None
 
@@ -532,8 +559,9 @@ class FileSource:
                 for docElt in self.eisDocument.iter(tag="{http://www.sec.gov/edgar/common}document"):
                     outfn = docElt.findtext("{http://www.sec.gov/edgar/common}conformedName")
                     if outfn == archiveFileName:
-                        b64data = docElt.findtext("{http://www.sec.gov/edgar/common}contents")
-                        if b64data:
+                        if b64data := docElt.findtext(
+                            "{http://www.sec.gov/edgar/common}contents"
+                        ):
                             b = base64.b64decode(b64data.encode("latin-1"))
                             # remove BOM codes if present
                             if len(b) > 3 and b[0] == 239 and b[1] == 187 and b[2] == 191:
@@ -555,8 +583,7 @@ class FileSource:
                 for data in archiveFileSource.xfdDocument.iter(tag="data"):
                     outfn = data.findtext("filename")
                     if outfn == archiveFileName:
-                        b64data = data.findtext("mimedata")
-                        if b64data:
+                        if b64data := data.findtext("mimedata"):
                             b = base64.b64decode(b64data.encode("latin-1"))
                             # remove BOM codes if present
                             if len(b) > 3 and b[0] == 239 and b[1] == 187 and b[2] == 191:
@@ -580,7 +607,7 @@ class FileSource:
                     l = len(archiveFileSource.basefile)
                     for f in TAXONOMY_PACKAGE_FILE_NAMES:
                         if filepath[l - len(f):l] == f:
-                            filepath = filepath[0:l - len(f) - 1] + filepath[l:]
+                            filepath = filepath[:l - len(f) - 1] + filepath[l:]
                             break
 
         # custom overrides for decription, etc
@@ -588,14 +615,12 @@ class FileSource:
             fileResult = pluginMethod(self.cntlr, filepath, binary, stripDeclaration)
             if fileResult is not None:
                 return fileResult # type: ignore[no-any-return]
+        assert self.cntlr is not None
         if binary:
-            assert self.cntlr is not None
             return (openFileStream(self.cntlr, filepath, 'rb'), )
         elif encoding:
-            assert self.cntlr is not None
             return (openFileStream(self.cntlr, filepath, 'rt', encoding=encoding), )
         else:
-            assert self.cntlr is not None
             return openXmlFileStream(self.cntlr, filepath, stripDeclaration)
 
     def exists(self, filepath: str) -> bool:
@@ -657,10 +682,12 @@ class FileSource:
             assert self.xfdDocument is not None
             for data in self.xfdDocument.iter(tag="data"):
                 outfn = data.findtext("filename")
-                if outfn:
-                    if len(outfn) > 2 and outfn[0].isalpha() and \
-                        outfn[1] == ':' and outfn[2] == '\\':
-                        continue
+                if outfn and (
+                    len(outfn) <= 2
+                    or not outfn[0].isalpha()
+                    or outfn[1] != ':'
+                    or outfn[2] != '\\'
+                ):
                     files.append(outfn)
             self.filesDir = files
         elif self.isRss:
@@ -719,11 +746,12 @@ class FileSource:
             baseurlPathLen = len(os.path.dirname(self.baseurl)) + 1
             def packageDirsFiles(dir: str) -> None:
                 for file in os.listdir(dir):
-                    path = dir + "/" + file   # must have / and not \\ even on windows
+                    path = f"{dir}/{file}"
                     files.append(path[baseurlPathLen:])
                     if os.path.isdir(path):
                         packageDirsFiles(path)
-            packageDirsFiles(self.baseurl[0:baseurlPathLen - 1])
+
+            packageDirsFiles(self.baseurl[:baseurlPathLen - 1])
             self.filesDir = files
 
         return self.filesDir
@@ -733,7 +761,7 @@ class FileSource:
             return selection
         elif self.baseIsHttp or os.sep == '/':
             assert isinstance(self.baseurl, str)
-            return self.baseurl + "/" + selection
+            return f"{self.baseurl}/{selection}"
         else: # MSFT os.sep == '\\'
             assert isinstance(self.baseurl, str)
             return self.baseurl + os.sep + selection.replace("/", os.sep)
@@ -742,12 +770,10 @@ class FileSource:
         self.selection = selection
         if not selection:
             self.url = None
+        elif isinstance(selection, list): # json list
+            self.url = [self.basedUrl(s) for s in selection]
         else:
-            if isinstance(selection, list): # json list
-                self.url = [self.basedUrl(s) for s in selection]
-            # elif isinstance(selection, dict): # json objects
-            else:
-                self.url = self.basedUrl(selection)
+            self.url = self.basedUrl(selection)
 
 def openFileStream(
     cntlr: Cntlr, filepath: str, mode: str = "r", encoding: str | None = None
@@ -775,8 +801,7 @@ def openFileStream(
         filestream = None
         cacheKey = filepath[len(SERVER_WEB_CACHE) + 1:].replace("\\","/")
         if cntlr.isGAE: # check if in memcache
-            cachedBytes = gaeGet(cacheKey)
-            if cachedBytes:
+            if cachedBytes := gaeGet(cacheKey):
                 filestream = io.BytesIO(cachedBytes)
         if filestream is None:
             filestream = io.BytesIO()
@@ -789,7 +814,6 @@ def openFileStream(
             filestream.close()
             filestream = FileNamedStringIO(filepath, contents.decode(encoding or 'utf-8'))
         return filestream
-    # local file system
     elif encoding is None and 'b' not in mode:
         openedFileStream = io.open(filepath, mode='rb')
         hdrBytes = openedFileStream.read(512)
@@ -814,26 +838,21 @@ def openXmlFileStream(
     # encoding default from disclosure system could be None
     if encoding.lower() in ('utf-8','utf8','utf-8-sig') and (cntlr is None or not cntlr.isGAE) and not stripDeclaration:
         text = None
-        openedFileStream.close()
     else:
         openedFileStream.seek(0)
         text = openedFileStream.read().decode(encoding or 'utf-8')
-        openedFileStream.close()
-        # allow filepath to close
-    # this may not be needed for Mac or Linux, needs confirmation!!!
-    if text is None:  # ok to read as utf-8
+            # allow filepath to close
+    openedFileStream.close()
+    if text is None:
         return io.open(filepath, 'rt', encoding=encoding or 'utf-8'), encoding
-    else:
-        if stripDeclaration:
-            # strip XML declaration
-            xmlDeclarationMatch = XMLdeclaration.search(text)
-            if xmlDeclarationMatch: # remove it for lxml
-                start,end = xmlDeclarationMatch.span()
-                text = text[0:start] + text[end:]
-        return (FileNamedStringIO(filepath, initial_value=text), encoding)
+    if stripDeclaration:
+        if xmlDeclarationMatch := XMLdeclaration.search(text):
+            start,end = xmlDeclarationMatch.span()
+            text = text[:start] + text[end:]
+    return (FileNamedStringIO(filepath, initial_value=text), encoding)
 
 def stripDeclarationBytes(xml: bytes) -> bytes:
-    xmlStart = xml[0:120]
+    xmlStart = xml[:120]
     indexOfDeclaration = xmlStart.find(b"<?xml")
     if indexOfDeclaration >= 0:
         indexOfDeclarationEnd = xmlStart.find(b"?>", indexOfDeclaration)
@@ -932,8 +951,8 @@ def gaeSet(key: str, bytesValue: bytes) -> bool: # stores bytes, not string valy
         # between different values, which can be simultaneously written
         # under the same key.
         chunkKey = '%s%d%d' % (key, pos, random.getrandbits(31))
-        isSuccess = gaeMemcache.set(chunkKey, chunk, time=GAE_EXPIRE_WEEK)
-        if not isSuccess:
+        if isSuccess := gaeMemcache.set(chunkKey, chunk, time=GAE_EXPIRE_WEEK):
+            chunkKeys.append(chunkKey)
+        else:
             return False
-        chunkKeys.append(chunkKey)
     return cast(bool, gaeMemcache.set(key, chunkKeys, time=GAE_EXPIRE_WEEK))

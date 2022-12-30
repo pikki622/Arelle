@@ -15,10 +15,7 @@ def compileAttrPattern(elt, attrName, flags=None, patternIfNoAttr=""):
         if patternIfNoAttr is None:
             return None # if None, then there is no pattern if attribute missing
         attr = patternIfNoAttr # use default pattern
-    if flags is not None:
-        return re.compile(attr, flags)
-    else:
-        return re.compile(attr)
+    return re.compile(attr, flags) if flags is not None else re.compile(attr)
 
 class ErxlLoc:
     def __init__(self, family, version, href, attType, elements, namespace):
@@ -157,8 +154,7 @@ class DisclosureSystem:
                 for url in self.urls: # urls in revese order, last plugin first
                     xmldoc = etree.parse(url)
                     for dsElt in xmldoc.iter(tag="DisclosureSystem"):
-                        namesStr = dsElt.get("names")
-                        if namesStr:
+                        if namesStr := dsElt.get("names"):
                             names = namesStr.split("|")
                             if name in names:
                                 self.names = names
@@ -256,81 +252,84 @@ class DisclosureSystem:
         return result
 
     def loadStandardTaxonomiesDict(self):
-        if self.selection:
-            self.standardTaxonomiesDict = defaultdict(set)
-            self.familyHrefs = defaultdict(set)
-            self.standardLocalHrefs = defaultdict(set)
-            self.standardAuthorities = set()
-            self.standardPrefixes = {}
-            if not self.standardTaxonomiesUrl:
-                return
-            basename = os.path.basename(self.standardTaxonomiesUrl)
-            self.modelManager.cntlr.showStatus(_("parsing {0}").format(basename))
-            try:
-                from arelle.FileSource import openXmlFileStream
-                for filepath in (self.standardTaxonomiesUrl,
+        if not self.selection:
+            return
+        self.standardTaxonomiesDict = defaultdict(set)
+        self.familyHrefs = defaultdict(set)
+        self.standardLocalHrefs = defaultdict(set)
+        self.standardAuthorities = set()
+        self.standardPrefixes = {}
+        if not self.standardTaxonomiesUrl:
+            return
+        basename = os.path.basename(self.standardTaxonomiesUrl)
+        self.modelManager.cntlr.showStatus(_("parsing {0}").format(basename))
+        try:
+            from arelle.FileSource import openXmlFileStream
+            for filepath in (self.standardTaxonomiesUrl,
                                  os.path.join(self.modelManager.cntlr.configDir,"xbrlschemafiles.xml")):
-                    xmldoc = etree.parse(filepath) # must open with file path for xinclude to know base of file
-                    xmldoc.xinclude() # to include elements below root use xpointer(/*/*)
-                    for erxlElt in xmldoc.iter(tag="Erxl"):
-                        v = erxlElt.get("version")
-                        if v and re.match(r"[0-9]+([.][0-9]+)*$", v):
-                            vSplit = v.split('.') # at least 3 digits always!
-                            self.version = tuple(int(n) for n in vSplit) + tuple(0 for n in range(3 - len(vSplit)))
-                        break
-                    for locElt in xmldoc.iter(tag="Loc"):
-                        href = None
-                        localHref = None
-                        namespaceUri = None
-                        prefix = None
-                        attType = None
-                        family = None
-                        elements = None
-                        version = None
-                        for childElt in locElt.iterchildren():
-                            ln = childElt.tag
-                            value = childElt.text.strip()
-                            if ln == "Href":
-                                href = value
-                            elif ln == "LocalHref":
-                                localHref = value
-                            elif ln == "Namespace":
-                                namespaceUri = value
-                            elif ln == "Prefix":
-                                prefix = value
-                            elif ln == "AttType":
-                                attType = value
-                            elif ln == "Family":
-                                family = value
-                            elif ln == "Elements":
-                                elements = value
-                            elif ln == "Version":
-                                version = value
-                        if href:
-                            if namespaceUri and (attType == "SCH" or attType == "ENT"):
-                                self.standardTaxonomiesDict[namespaceUri].add(href)
-                                if localHref:
-                                    self.standardLocalHrefs[namespaceUri].add(localHref)
-                                authority = UrlUtil.authority(namespaceUri)
-                                self.standardAuthorities.add(authority)
-                                if family == "BASE":
-                                    self.baseTaxonomyNamespaces.add(namespaceUri)
-                                if prefix:
-                                    self.standardPrefixes[namespaceUri] = prefix
-                            if href not in self.standardTaxonomiesDict:
-                                self.standardTaxonomiesDict[href] = "Allowed" + attType
-                            if family:
-                                self.familyHrefs[family].add(ErxlLoc(family, version, href, attType, elements, namespaceUri))
-                        elif attType == "SCH" and family == "BASE":
-                            self.baseTaxonomyNamespaces.add(namespaceUri)
+                xmldoc = etree.parse(filepath) # must open with file path for xinclude to know base of file
+                xmldoc.xinclude() # to include elements below root use xpointer(/*/*)
+                for erxlElt in xmldoc.iter(tag="Erxl"):
+                    v = erxlElt.get("version")
+                    if v and re.match(r"[0-9]+([.][0-9]+)*$", v):
+                        vSplit = v.split('.') # at least 3 digits always!
+                        self.version = tuple(int(n) for n in vSplit) + tuple(
+                            0 for _ in range(3 - len(vSplit))
+                        )
+                    break
+                for locElt in xmldoc.iter(tag="Loc"):
+                    href = None
+                    localHref = None
+                    namespaceUri = None
+                    prefix = None
+                    attType = None
+                    family = None
+                    elements = None
+                    version = None
+                    for childElt in locElt.iterchildren():
+                        ln = childElt.tag
+                        value = childElt.text.strip()
+                        if ln == "AttType":
+                            attType = value
+                        elif ln == "Elements":
+                            elements = value
+                        elif ln == "Family":
+                            family = value
+                        elif ln == "Href":
+                            href = value
+                        elif ln == "LocalHref":
+                            localHref = value
+                        elif ln == "Namespace":
+                            namespaceUri = value
+                        elif ln == "Prefix":
+                            prefix = value
+                        elif ln == "Version":
+                            version = value
+                    if href:
+                        if namespaceUri and attType in ["SCH", "ENT"]:
+                            self.standardTaxonomiesDict[namespaceUri].add(href)
+                            if localHref:
+                                self.standardLocalHrefs[namespaceUri].add(localHref)
+                            authority = UrlUtil.authority(namespaceUri)
+                            self.standardAuthorities.add(authority)
+                            if family == "BASE":
+                                self.baseTaxonomyNamespaces.add(namespaceUri)
+                            if prefix:
+                                self.standardPrefixes[namespaceUri] = prefix
+                        if href not in self.standardTaxonomiesDict:
+                            self.standardTaxonomiesDict[href] = f"Allowed{attType}"
+                        if family:
+                            self.familyHrefs[family].add(ErxlLoc(family, version, href, attType, elements, namespaceUri))
+                    elif attType == "SCH" and family == "BASE":
+                        self.baseTaxonomyNamespaces.add(namespaceUri)
 
-            except (EnvironmentError,
-                    etree.LxmlError) as err:
-                self.modelManager.cntlr.addToLog(_("Disclosure System \"%(name)s\" import %(importFile)s, error: %(error)s"),
-                                                 messageCode="arelle:disclosureSystemImportError",
-                                                 messageArgs={"error": str(err), "name": self.name, "importFile": basename},
-                                                 level=logging.ERROR)
-                etree.clear_error_log()
+        except (EnvironmentError,
+                etree.LxmlError) as err:
+            self.modelManager.cntlr.addToLog(_("Disclosure System \"%(name)s\" import %(importFile)s, error: %(error)s"),
+                                             messageCode="arelle:disclosureSystemImportError",
+                                             messageArgs={"error": str(err), "name": self.name, "importFile": basename},
+                                             level=logging.ERROR)
+            etree.clear_error_log()
 
     def loadMappings(self):
         basename = os.path.basename(self.mappingsUrl)
@@ -368,9 +367,11 @@ class DisclosureSystem:
 
     def disallowedHrefOfNamespace(self, href, namespaceUri):
         if self.standardTaxonomiesUrl:
-            if namespaceUri in self.standardTaxonomiesDict:
-                if href in self.standardTaxonomiesDict[namespaceUri]:
-                    return False
+            if (
+                namespaceUri in self.standardTaxonomiesDict
+                and href in self.standardTaxonomiesDict[namespaceUri]
+            ):
+                return False
             if namespaceUri in self.standardLocalHrefs and not isHttpUrl(href):
                 normalizedHref = href.replace("\\","/")
                 if any(normalizedHref.endswith(localHref)

@@ -103,12 +103,9 @@ def make(filename, outfile):
     STR = 2
 
     # Compute .mo name from .po name and arguments
-    if filename.endswith('.po'):
-        infile = filename
-    else:
-        infile = filename + '.po'
+    infile = filename if filename.endswith('.po') else f'{filename}.po'
     if outfile is None:
-        outfile = os.path.splitext(infile)[0] + '.mo'
+        outfile = f'{os.path.splitext(infile)[0]}.mo'
 
     try:
         lines = open(infile, encoding='utf-8').readlines()
@@ -121,7 +118,7 @@ def make(filename, outfile):
 
     msgid = None
     msgstr = None
-    
+
     # Parse the catalog
     lno = 0
     for l in lines:
@@ -196,6 +193,7 @@ def make(filename, outfile):
     try:
         open(outfile,"wb").write(output)
     except IOError as msg:
+        print (msg, file=sys.stderr)
         print (msg, file=sys.stderr)
 
 

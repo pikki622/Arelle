@@ -76,9 +76,7 @@ def selectDisclosureSystem(parent, disclosureSystem):
                                disclosureSystemSelections,
                                _("Select Disclosure System"),
                                _("Disclosure System"))
-    if dialog and dialog.accepted:
-        return disclosureSystem.selection
-    return None
+    return disclosureSystem.selection if dialog and dialog.accepted else None
 
 def selectPlugin(parent, pluginChoices):
 
@@ -89,9 +87,7 @@ def selectPlugin(parent, pluginChoices):
                                pluginChoices,
                                _("File"),
                                _("Select Plug-in Module"))
-    if dialog and dialog.accepted:
-        return filesource.selection
-    return None
+    return filesource.selection if dialog and dialog.accepted else None
 
 def selectPackage(parent, packageChoices):
 
@@ -102,9 +98,7 @@ def selectPackage(parent, packageChoices):
                                packageChoices,
                                _("Name"),
                                _("Select Package"))
-    if dialog and dialog.accepted:
-        return filesource.selection
-    return None
+    return filesource.selection if dialog and dialog.accepted else None
 
 
 class DialogOpenArchive(Toplevel):
@@ -163,8 +157,7 @@ class DialogOpenArchive(Toplevel):
                 self.metadataFilePrefix = os.sep.join(os.path.split(metadataFile)[:-1])
                 if self.metadataFilePrefix:
                     self.metadataFilePrefix += "/"  # zip contents have /, never \ file seps
-                self.taxonomyPkgMetaInf = '{}/META-INF/'.format(
-                            os.path.splitext(os.path.basename(filesource.url))[0])
+                self.taxonomyPkgMetaInf = f'{os.path.splitext(os.path.basename(filesource.url))[0]}/META-INF/'
 
 
                 self.taxonomyPackage = parsePackage(cntlr, filesource, metadata,
@@ -199,17 +192,17 @@ class DialogOpenArchive(Toplevel):
                         for _type, count in packageContentTypeCounts.items():
                             if count > 1:
                                 _dupNo = 0
-                                for i in range(len(self.packageContainedInstances)):
-                                    if self.packageContainedInstances[i][1] == _type:
+                                for packageContainedInstance in self.packageContainedInstances:
+                                    if packageContainedInstance[1] == _type:
                                         _dupNo += 1
-                                        self.packageContainedInstances[i][1] = "{} {}".format(_type, _dupNo)
+                                        packageContainedInstance[1] = f"{_type} {_dupNo}"
                         for _instance, count in packageContentInstanceCounts.items():
                             if count > 1:
                                 _dupNo = 0
-                                for i in range(len(self.packageContainedInstances)):
-                                    if self.packageContainedInstances[i][0] == _instance:
+                                for packageContainedInstance_ in self.packageContainedInstances:
+                                    if packageContainedInstance_[0] == _instance:
                                         _dupNo += 1
-                                        self.packageContainedInstances[i][0] = "{} {}".format(_instance, _dupNo)
+                                        packageContainedInstance_[0] = f"{_instance} {_dupNo}"
 
                 else:
                     # may be a catalog file with no entry oint names
@@ -225,11 +218,7 @@ class DialogOpenArchive(Toplevel):
         if openType not in (PLUGIN, PACKAGE):
             cntlr.showStatus(None)
 
-        if openType in (DISCLOSURE_SYSTEM, PLUGIN, PACKAGE):
-            y = 3
-        else:
-            y = 1
-
+        y = 3 if openType in (DISCLOSURE_SYSTEM, PLUGIN, PACKAGE) else 1
         okButton = Button(frame, text=_("OK"), command=self.ok)
         cancelButton = Button(frame, text=_("Cancel"), command=self.close)
         okButton.grid(row=y, column=2, sticky=(S,E,W), pady=3)
@@ -283,8 +272,7 @@ class DialogOpenArchive(Toplevel):
 
         # set up treeView widget and tabbed pane
         if openType in (ARCHIVE, DISCLOSURE_SYSTEM, PLUGIN, PACKAGE):
-            if openType in (PLUGIN, PACKAGE): width = 770
-            else: width = 500
+            width = 770 if openType in (PLUGIN, PACKAGE) else 500
             self.treeView.column("#0", width=width, anchor="w")
             self.treeView.heading("#0", text=colHeader)
             self.isRss = getattr(self.filesource, "isRss", False)
@@ -394,10 +382,7 @@ class DialogOpenArchive(Toplevel):
                 for _selection in selection:
                     filename = self.filenames[int(_selection[4:])]
                     if isinstance(filename,tuple):
-                        if self.isRss:
-                            filename = filename[4]
-                        else:
-                            filename = filename[0]
+                        filename = filename[4] if self.isRss else filename[0]
                     if self.multiselect:
                         filenames.append(filename)
                     else:
@@ -407,7 +392,6 @@ class DialogOpenArchive(Toplevel):
                     self.accepted = True
                     self.close()
             elif self.openType == ENTRY_POINTS:
-                epName = selection[0]
                 #index 0 is the remapped Url, as opposed to the canonical one used for display
                 # Greg Acsone reports [0] does not work for Corep 1.6 pkgs, need [1], old style packages
                 filenames = []
@@ -418,13 +402,16 @@ class DialogOpenArchive(Toplevel):
                         else: # single instance
                             filenames.append(_url)
                 if not filenames: # else if it's a named taxonomy entry point of an installed package
+                    epName = selection[0]
                     for url in self.taxonomyPackage["entryPoints"][epName]:
                         filename = url[1] # use unmapped file name
-                        if not filename.endswith("/"):
-                            # check if it's an absolute URL rather than a path into the archive
-                            if not isHttpUrl(filename) and self.metadataFilePrefix != self.taxonomyPkgMetaInf:
-                                # assume it's a path inside the archive:
-                                filename = self.metadataFilePrefix + filename
+                        if (
+                            not filename.endswith("/")
+                            and not isHttpUrl(filename)
+                            and self.metadataFilePrefix != self.taxonomyPkgMetaInf
+                        ):
+                            # assume it's a path inside the archive:
+                            filename = self.metadataFilePrefix + filename
                         filenames.append(filename)
                 if filenames:
                     self.filesource.select(filenames)

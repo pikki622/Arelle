@@ -240,8 +240,8 @@ class DialogPackageManager(Toplevel):
             self.packagesView.delete(previousNode)
 
         for i, packageInfo in enumerate(self.packagesConfig.get("packages", [])):
-            name = packageInfo.get("name", "package{}".format(i))
-            node = self.packagesView.insert("", "end", "_{}".format(i), text=name)
+            name = packageInfo.get("name", f"package{i}")
+            node = self.packagesView.insert("", "end", f"_{i}", text=name)
             self.packagesView.set(node, "ver", packageInfo.get("version"))
             self.packagesView.set(node, "status", packageInfo.get("status"))
             self.packagesView.set(node, "date", packageInfo.get("fileDate"))
@@ -253,7 +253,7 @@ class DialogPackageManager(Toplevel):
         for previousNode in self.remappingsView.get_children(""):
             self.remappingsView.delete(previousNode)
 
-        for i, remappingItem in enumerate(sorted(self.packagesConfig.get("remappings", {}).items())):
+        for remappingItem in sorted(self.packagesConfig.get("remappings", {}).items()):
             prefix, remapping = remappingItem
             node = self.remappingsView.insert("", "end", prefix, text=prefix)
             self.remappingsView.set(node, "remapping", remapping)
@@ -309,7 +309,7 @@ class DialogPackageManager(Toplevel):
             self.packageEnableButton.config(state=ACTIVE,
                                            text={"enabled":self.DISABLE,
                                                  "disabled":self.ENABLE}[packageInfo["status"]])
-            self.packageMoveUpButton.config(state=ACTIVE if 0 < nodeIndex else DISABLED)
+            self.packageMoveUpButton.config(state=ACTIVE if nodeIndex > 0 else DISABLED)
             self.packageMoveDownButton.config(state=ACTIVE if nodeIndex < (len(self.packagesConfig["packages"]) - 1) else DISABLED)
             self.packageReloadButton.config(state=ACTIVE)
             self.packageRemoveButton.config(state=ACTIVE)
@@ -378,16 +378,22 @@ class DialogPackageManager(Toplevel):
         initialdir = self.cntlr.pluginDir # default plugin directory
         #if not self.cntlr.isMac: # can't navigate within app easily, always start in default directory
         initialdir = self.cntlr.config.setdefault("packageOpenDir", initialdir)
-        filename = self.cntlr.uiFileDialog("open",
-                                           parent=self,
-                                           title=_("Choose taxonomy package file"),
-                                           initialdir=initialdir,
-                                           filetypes=[(_("Taxonomy package files (*.zip)"), "*.zip"),
-                                                      (_("PWD Manifest (taxonomyPackage.xml)"), "taxonomyPackage.xml"),
-                                                      (_("pre-PWD Manifest (*.taxonomyPackage.xml)"), "*.taxonomyPackage.xml"),
-                                                      (_("pre-PWD Oasis Catalog (*catalog.xml)"), "*catalog.xml")],
-                                           defaultextension=".zip")
-        if filename:
+        if filename := self.cntlr.uiFileDialog(
+            "open",
+            parent=self,
+            title=_("Choose taxonomy package file"),
+            initialdir=initialdir,
+            filetypes=[
+                (_("Taxonomy package files (*.zip)"), "*.zip"),
+                (_("PWD Manifest (taxonomyPackage.xml)"), "taxonomyPackage.xml"),
+                (
+                    _("pre-PWD Manifest (*.taxonomyPackage.xml)"),
+                    "*.taxonomyPackage.xml",
+                ),
+                (_("pre-PWD Oasis Catalog (*catalog.xml)"), "*catalog.xml"),
+            ],
+            defaultextension=".zip",
+        ):
             # check if a package is selected (any file in a directory containing an __init__.py
             self.cntlr.config["packageOpenDir"] = os.path.dirname(filename)
             packageInfo = PackageManager.packageInfo(self.cntlr, filename, packageManifestName=self.manifestNamePattern)
@@ -480,10 +486,13 @@ class DialogPackageManager(Toplevel):
     def packageReload(self):
         if 0 <= self.selectedPackageIndex < len(self.packagesConfig["packages"]):
             packageInfo = self.packagesConfig["packages"][self.selectedPackageIndex]
-            url = packageInfo.get("URL")
-            if url:
-                packageInfo = PackageManager.packageInfo(self.cntlr, url, reload=True, packageManifestName=packageInfo.get("manifestName"))
-                if packageInfo:
+            if url := packageInfo.get("URL"):
+                if packageInfo := PackageManager.packageInfo(
+                    self.cntlr,
+                    url,
+                    reload=True,
+                    packageManifestName=packageInfo.get("manifestName"),
+                ):
                     self.addPackageInfo(packageInfo)
                     PackageManager.rebuildRemappings(self.cntlr)
                     self.loadTreeViews()

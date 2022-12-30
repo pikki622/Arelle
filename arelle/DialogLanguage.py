@@ -39,7 +39,7 @@ class DialogLanguage(Toplevel):
                          if v.partition(" ")[0] in avail]
                         ))
         self.uiLang = mainWin.config.get("userInterfaceLangOverride", "")
-        if self.uiLang == "" or self.uiLang == mainWin.modelManager.defaultLang:
+        if self.uiLang in ["", mainWin.modelManager.defaultLang]:
             self.uiLangIndex = 0
         else:
             self.uiLangIndex = None
@@ -48,7 +48,7 @@ class DialogLanguage(Toplevel):
                     self.uiLangIndex = i
                     break
         self.labelLang = mainWin.config.get("labelLangOverride", "")
-        if self.labelLang == "" or self.labelLang == mainWin.modelManager.defaultLang:
+        if self.labelLang in ["", mainWin.modelManager.defaultLang]:
             self.labelLangIndex = 0
         else:
             self.labelLangIndex = None
@@ -62,7 +62,7 @@ class DialogLanguage(Toplevel):
         defaultLanguage = mainWin.modelManager.defaultLang
         for langName, langCodes in self.languageCodes.items():
             if mainWin.modelManager.defaultLang in langCodes:
-                defaultLanguage += ", " + langName
+                defaultLanguage += f", {langName}"
                 break
         gridHdr(frame, 0, 0, _(
                  "The system default language is: {0} \n\n"

@@ -68,7 +68,7 @@ class DialogFormulaParameters(Toplevel):
                 gridCell(frame, 3, y, paramValue)) )
             y += 1
         # extra entry for new cells
-        for i in range(5):
+        for _ in range(5):
             self.gridCells.append( (
                 gridCell(frame, 1, y),
                 gridCombobox(frame, 2, y, values=dataTypes),

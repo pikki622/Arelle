@@ -13,15 +13,15 @@ def attrValue(str, name):
         if value:
             if c == endSep or c.isspace() or c in (';'):
                 break
-            value.append(c)
+            else:
+                value.append(c)
         elif beforeEquals:
             if c == '=':
                 beforeEquals = False
-        else:
-            if c in ('"', "'"):
-                endSep = c
-            elif c == ';':
-                break
-            elif not c.isspace():
-                value.append(c)
+        elif c in ('"', "'"):
+            endSep = c
+        elif c == ';':
+            break
+        elif not c.isspace():
+            value.append(c)
     return ''.join(value)

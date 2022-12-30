@@ -81,43 +81,41 @@ def server(_cntlr, soapFile, requestUrlParts):
     soapBody = soapDocument.find("{http://schemas.xmlsoap.org/soap/envelope/}Body")
     if soapBody is None:
         return ""
-    else:
-        for request in soapBody.iterchildren():
-            requestName = request.tag.partition("}")[2]
-            print ("request {0}".format(requestName))
-            response = None
-            if request.tag == "{http://developer.intuit.com/}serverVersion":
-                response = "Arelle 1.0"
-            elif request.tag == "{http://developer.intuit.com/}clientVersion":
-                global clientVersion
-                clientVersion = request.find("{http://developer.intuit.com/}strVersion").text
-            elif request.tag == "{http://developer.intuit.com/}authenticate":
-                #global userName  # not needed for now
-                #userName = request.find("{http://developer.intuit.com/}strUserName").text
-                #password is ignored
-                ticket = str(uuid.uuid1())
-                global qbRequests
-                if qbRequests: # start a non-interactive session
-                    response = [ticket, ""]
-                    sessions[ticket] = qbRequests
-                    qbRequests = []
-                else:
-                    # to start an interactive session automatically from QB side, uncomment
-                    #response = [ticket, "" if not sessions else "none"] # don't start session if one already there
-                    #sessions[ticket] = [{"request":"StartInteractiveMode"}]
-                    response = [ticket, "none"]  # response to not start interactive mode
-            elif request.tag == "{http://developer.intuit.com/}sendRequestXML":
-                ticket = request.find("{http://developer.intuit.com/}ticket").text
-                _qbRequests = sessions.get(ticket)
-                if _qbRequests:
-                    _qbRequest = _qbRequests[0]
-                    action = _qbRequest["request"]
-                    if action == "StartInteractiveMode":
-                        response = ''
-                    elif action in supportedQbReports:
-                        # add company info to request dict
-                        _qbRequest["strHCPResponse"] = request.find("{http://developer.intuit.com/}strHCPResponse").text
-                        response = ('''<?xml version="1.0"?>
+    for request in soapBody.iterchildren():
+        requestName = request.tag.partition("}")[2]
+        print ("request {0}".format(requestName))
+        response = None
+        if request.tag == "{http://developer.intuit.com/}serverVersion":
+            response = "Arelle 1.0"
+        elif request.tag == "{http://developer.intuit.com/}clientVersion":
+            global clientVersion
+            clientVersion = request.find("{http://developer.intuit.com/}strVersion").text
+        elif request.tag == "{http://developer.intuit.com/}authenticate":
+            #global userName  # not needed for now
+            #userName = request.find("{http://developer.intuit.com/}strUserName").text
+            #password is ignored
+            ticket = str(uuid.uuid1())
+            global qbRequests
+            if qbRequests: # start a non-interactive session
+                response = [ticket, ""]
+                sessions[ticket] = qbRequests
+                qbRequests = []
+            else:
+                # to start an interactive session automatically from QB side, uncomment
+                #response = [ticket, "" if not sessions else "none"] # don't start session if one already there
+                #sessions[ticket] = [{"request":"StartInteractiveMode"}]
+                response = [ticket, "none"]  # response to not start interactive mode
+        elif request.tag == "{http://developer.intuit.com/}sendRequestXML":
+            ticket = request.find("{http://developer.intuit.com/}ticket").text
+            if _qbRequests := sessions.get(ticket):
+                _qbRequest = _qbRequests[0]
+                action = _qbRequest["request"]
+                if action == "StartInteractiveMode":
+                    response = ''
+                elif action in supportedQbReports:
+                    # add company info to request dict
+                    _qbRequest["strHCPResponse"] = request.find("{http://developer.intuit.com/}strHCPResponse").text
+                    response = ('''<?xml version="1.0"?>
 <?qbxml version="8.0"?>
 <QBXML>
   <QBXMLMsgsRq onError="stopOnError">
@@ -130,75 +128,63 @@ def server(_cntlr, soapFile, requestUrlParts):
     </{1}ReportQueryRq>
   </QBXMLMsgsRq>
 </QBXML>''').format(action[0].upper() + action[1:],
-                    supportedQbReports[action],
-                    _qbRequest["fromDate"],
-                    _qbRequest["toDate"],
-                    includeQbColumns[action],
-                    ).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                supportedQbReports[action],
+                _qbRequest["fromDate"],
+                _qbRequest["toDate"],
+                includeQbColumns[action],
+                ).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
-            elif request.tag == "{http://developer.intuit.com/}connectionError":
-                ticket = request.find("{http://developer.intuit.com/}ticket").text
-                hresult = request.find("{http://developer.intuit.com/}hresult").text
-                if hresult and hresult.startswith("0x"):
-                    hresult = hresult[2:] # remove 0x if present
-                message = request.find("{http://developer.intuit.com/}message").text
-                print ("connection error message: [{0}] {1}".format(hresult, message))
-                _qbRequests = sessions.get(ticket)
-                if _qbRequests:
-                    qbRequestTicket = _qbRequests[0]["ticket"]
-                    qbRequestStatus[qbRequestTicket] = "ConnectionErrorMessage: [{0}] {1}".format(hresult, message)
-                response = "done"
-            elif request.tag == "{http://developer.intuit.com/}receiveResponseXML":
-                ticket = request.find("{http://developer.intuit.com/}ticket").text
-                responseXml = (request.find("{http://developer.intuit.com/}response").text or "").replace("&lt;","<").replace("&gt;",">")
-                _qbRequests = sessions.get(ticket)
-                if _qbRequests:
-                    if responseXml:
-                        processQbResponse(_qbRequests[0], responseXml)
-                    else:
-                        print ("no response from QuickBooks")
-                    response = str(100 / len(_qbRequests))
-                    sessions[ticket] = _qbRequests[1:]
-            elif request.tag == "{http://developer.intuit.com/}getLastError":
-                ticket = request.find("{http://developer.intuit.com/}ticket").text
-                _qbRequests = sessions.get(ticket)
-                if _qbRequests:
-                    _qbRequest = _qbRequests[0]
-                    action = _qbRequest["request"]
-                    if action == "StartInteractiveMode":
-                        response = "Interactive mode"
-                    else:
-                        response = "NoOp"
+        elif request.tag == "{http://developer.intuit.com/}connectionError":
+            ticket = request.find("{http://developer.intuit.com/}ticket").text
+            hresult = request.find("{http://developer.intuit.com/}hresult").text
+            if hresult and hresult.startswith("0x"):
+                hresult = hresult[2:] # remove 0x if present
+            message = request.find("{http://developer.intuit.com/}message").text
+            print ("connection error message: [{0}] {1}".format(hresult, message))
+            if _qbRequests := sessions.get(ticket):
+                qbRequestTicket = _qbRequests[0]["ticket"]
+                qbRequestStatus[qbRequestTicket] = "ConnectionErrorMessage: [{0}] {1}".format(hresult, message)
+            response = "done"
+        elif request.tag == "{http://developer.intuit.com/}receiveResponseXML":
+            ticket = request.find("{http://developer.intuit.com/}ticket").text
+            responseXml = (request.find("{http://developer.intuit.com/}response").text or "").replace("&lt;","<").replace("&gt;",">")
+            if _qbRequests := sessions.get(ticket):
+                if responseXml:
+                    processQbResponse(_qbRequests[0], responseXml)
                 else:
-                    response = "NoOp"
-            elif request.tag == "{http://developer.intuit.com/}getInteractiveURL":
-                ticket = request.find("{http://developer.intuit.com/}wcTicket").text
-                response = "{0}://{1}/quickbooks/server.html?ticket={2}".format(
-                            requestUrlParts.scheme,
-                            requestUrlParts.netloc,
-                            ticket)
-                sessions[ticket] = [{"request":"WaitForInput"}]
-            elif request.tag == "{http://developer.intuit.com/}isInteractiveDone":
-                ticket = request.find("{http://developer.intuit.com/}wcTicket").text
-                _qbRequests = sessions.get(ticket)
-                if _qbRequests:
-                    _qbRequest = _qbRequests[0]
-                    action = _qbRequest["request"]
-                    if action == "Done":
-                        response = "Done"
-                    else:
-                        response = "Not done"
-                else:
-                    response = "Not done"
-            elif request.tag == "{http://developer.intuit.com/}interactiveRejected":
-                ticket = request.find("{http://developer.intuit.com/}wcTicket").text
-                response = "Interactive session timed out or canceled"
-                sessions.pop(ticket, None)
-            elif request.tag == "{http://developer.intuit.com/}closeConnection":
-                response = "OK"
+                    print ("no response from QuickBooks")
+                response = str(100 / len(_qbRequests))
+                sessions[ticket] = _qbRequests[1:]
+        elif request.tag == "{http://developer.intuit.com/}getLastError":
+            ticket = request.find("{http://developer.intuit.com/}ticket").text
+            if _qbRequests := sessions.get(ticket):
+                _qbRequest = _qbRequests[0]
+                action = _qbRequest["request"]
+                response = "Interactive mode" if action == "StartInteractiveMode" else "NoOp"
+            else:
+                response = "NoOp"
+        elif request.tag == "{http://developer.intuit.com/}getInteractiveURL":
+            ticket = request.find("{http://developer.intuit.com/}wcTicket").text
+            response = "{0}://{1}/quickbooks/server.html?ticket={2}".format(
+                        requestUrlParts.scheme,
+                        requestUrlParts.netloc,
+                        ticket)
+            sessions[ticket] = [{"request":"WaitForInput"}]
+        elif request.tag == "{http://developer.intuit.com/}isInteractiveDone":
+            ticket = request.find("{http://developer.intuit.com/}wcTicket").text
+            if _qbRequests := sessions.get(ticket):
+                _qbRequest = _qbRequests[0]
+                response = "Done" if _qbRequest["request"] == "Done" else "Not done"
+            else:
+                response = "Not done"
+        elif request.tag == "{http://developer.intuit.com/}interactiveRejected":
+            ticket = request.find("{http://developer.intuit.com/}wcTicket").text
+            response = "Interactive session timed out or canceled"
+            sessions.pop(ticket, None)
+        elif request.tag == "{http://developer.intuit.com/}closeConnection":
+            response = "OK"
 
-            soapResponse = qbResponse(requestName, response)
-            return soapResponse
+        return qbResponse(requestName, response)
 
 def qbRequest(qbReport, fromDate, toDate, file):
     ticket = str(uuid.uuid1())
@@ -343,10 +329,7 @@ def processQbResponse(qbRequest, responseXml):
     instance.createFact(qname("{http://www.xbrl.org/int/gl/bus/2006-10-25}gl-bus:organizationDescription"), parent=orgIds, attributes=nonNumAttr,
                         text=docEltText(companyQbDoc, "LegalCompanyName"))
 
-    if qbReport == "trialBalance":
-        qbTxnType = "trialbalance"
-    else:
-        qbTxnType = None
+    qbTxnType = "trialbalance" if qbReport == "trialBalance" else None
     qbTxnNumber = None
     qbDate = None
     qbRefNumber = None
@@ -355,7 +338,10 @@ def processQbResponse(qbRequest, responseXml):
     lineNumber = 1
 
     for dataRowElt in responseQbDoc.iter("DataRow"):
-        cols = dict((colIdType[colElt.get("colID")], colElt.get("value")) for colElt in dataRowElt.iter("ColData"))
+        cols = {
+            colIdType[colElt.get("colID")]: colElt.get("value")
+            for colElt in dataRowElt.iter("ColData")
+        }
         if qbReport == "trialBalance" and "Label" in cols:
             cols["SplitAccount"] = cols["Label"]
 
@@ -366,11 +352,14 @@ def processQbResponse(qbRequest, responseXml):
                 hasRowDataAccount = True
                 if "SplitAccount" not in cols:
                     cols["SplitAccount"] = rowDataElt.get("value")
-        if qbReport == "trialBalance" and not hasRowDataAccount:
-            continue  # skip total lines or others without account information
-        elif qbReport in ("generalLedger", "journal"):
-            if "TxnType" not in cols:
-                continue  # not a reportable entry
+        if (
+            (qbReport != "trialBalance" or hasRowDataAccount)
+            and qbReport in ("generalLedger", "journal")
+            and "TxnType" not in cols
+            or qbReport == "trialBalance"
+            and not hasRowDataAccount
+        ):
+            continue  # not a reportable entry
 
         # entry header fields only on new item that generates an entry header
         if "TxnType" in cols:
@@ -504,25 +493,21 @@ def processQbResponse(qbRequest, responseXml):
 
         if qbName or qbMemo:
             identRef = instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:identifierReference"), parent=entryDetail)
-            if qbMemo:
-                instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:identifierCode"), parent=identRef, attributes=nonNumAttr,
-                                    text=qbMemo)
-            if qbName:
-                instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:identifierDescription"), parent=identRef, attributes=nonNumAttr,
-                                    text=qbName)
-            #instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:identifierType"), parent=identRef, attributes=nonNumAttr,
-            #                    text="V")
+                    #instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:identifierType"), parent=identRef, attributes=nonNumAttr,
+                    #                    text="V")
 
+        if qbMemo:
+            instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:identifierCode"), parent=identRef, attributes=nonNumAttr,
+                                text=qbMemo)
+        if qbName:
+            instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:identifierDescription"), parent=identRef, attributes=nonNumAttr,
+                                text=qbName)
         if qbReport != "trialBalance":
             if qbTxnType: # not exactly same enumerations as expected by QB
                 cleanedQbTxnType = qbTxnType.replace(" ","").lower()
                 glDocType = qbTxnTypeToGL.get(cleanedQbTxnType) # try table lookup
                 if glDocType is None: # not in table
-                    if cleanedQbTxnType.endswith("check"): # didn't convert, probably should be a check
-                        glDocType = "check"
-                    # TBD add more QB transations here as they are discovered and not in table
-                    else:
-                        glDocType = qbTxnType # if all else fails pass through QB TxnType, it will fail GL validation and be noticed!
+                    glDocType = "check" if cleanedQbTxnType.endswith("check") else qbTxnType
                 instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:documentType"), parent=entryDetail, attributes=nonNumAttr,
                                     text=glDocType)
 
@@ -530,8 +515,8 @@ def processQbResponse(qbRequest, responseXml):
             posted to the originating system or not.'''
             instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:postingStatus"), parent=entryDetail, attributes=nonNumAttr,
                                 text="posted")
-            # A comment at the individual entry detail level.
-            # instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:detailComment"), parent=entryDetail, attributes=nonNumAttr, text="Comment...")
+                    # A comment at the individual entry detail level.
+                    # instance.createFact(qname("{http://www.xbrl.org/int/gl/cor/2006-10-25}gl-cor:detailComment"), parent=entryDetail, attributes=nonNumAttr, text="Comment...")
 
         isFirst = False
 

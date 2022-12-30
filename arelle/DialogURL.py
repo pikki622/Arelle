@@ -14,9 +14,7 @@ caller checks accepted, if True, caller retrieves url
 '''
 def askURL(parent, url=None, buttonSEC=False, buttonRSS=False):
     dialog = DialogURL(parent, url, buttonSEC, buttonRSS)
-    if dialog.accepted:
-        return dialog.url
-    return None
+    return dialog.url if dialog.accepted else None
 
 
 class DialogURL(Toplevel):

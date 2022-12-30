@@ -83,9 +83,12 @@ def askInternetLogon(parent, url, quotedUrl, dialogCaption, dialogText, untilDon
     else:
         import webbrowser
         webbrowser.open(quotedUrl, new=1, autoraise=True)
-        r = messagebox.askretrycancel(dialogCaption,
-                                      _("After logging on (by web browser, if applicable) click 'retry' to reload web file"))
-        if r:
+        if r := messagebox.askretrycancel(
+            dialogCaption,
+            _(
+                "After logging on (by web browser, if applicable) click 'retry' to reload web file"
+            ),
+        ):
             result.append("retry")
         else:
             result.append("cancel")
@@ -105,17 +108,17 @@ class DialogUserPassword(Toplevel):
         self.transient(self.parent)
         self.title(title)
         self.urlAddrVar = StringVar()
-        self.urlAddrVar.set(urlAddr if urlAddr else "")
+        self.urlAddrVar.set(urlAddr or "")
         self.urlPortVar = StringVar()
-        self.urlPortVar.set(urlPort if urlPort else "")
+        self.urlPortVar.set(urlPort or "")
         self.userVar = StringVar()
-        self.userVar.set(user if user else "")
+        self.userVar.set(user or "")
         self.passwordVar = StringVar()
-        self.passwordVar.set(password if password else "")
+        self.passwordVar.set(password or "")
         self.databaseVar = StringVar()
-        self.databaseVar.set(database if database else "")
+        self.databaseVar.set(database or "")
         self.timeoutVar = StringVar()
-        self.timeoutVar.set(timeout if timeout else "")
+        self.timeoutVar.set(timeout or "")
 
         frame = Frame(self)
         y = 0

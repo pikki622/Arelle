@@ -190,8 +190,9 @@ class DialogRssWatch(Toplevel):
 
     def setupSmtp(self):
         from arelle.DialogUserPassword import askSmtp
-        smtpSettings = askSmtp(self, self.options.get("smtpEmailSettings",()))
-        if smtpSettings:
+        if smtpSettings := askSmtp(
+            self, self.options.get("smtpEmailSettings", ())
+        ):
             self.options["smtpEmailSettings"] = smtpSettings
 
     def clearPubDate(self):
@@ -199,7 +200,9 @@ class DialogRssWatch(Toplevel):
 
     def checkEntries(self):
         errors = []
-        if not self.cellFeed.value in rssFeeds and not isValidAbsolute(self.cellFeed.value):
+        if self.cellFeed.value not in rssFeeds and not isValidAbsolute(
+            self.cellFeed.value
+        ):
             errors.append(_("RSS feed field contents invalid"))
         try:
             if self.cellMatchText.value:

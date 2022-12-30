@@ -43,7 +43,6 @@ class CntlrComServer(Cntlr.Cntlr):
         print (sys.path)
         self.startedAt = datetime.datetime.now().microsecond
         self.last = "({0})".format(self.startedAt)
-        pass
 
 
     def Load(self, url):

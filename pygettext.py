@@ -205,17 +205,9 @@ def usage(code, msg=''):
 
 
 
-escapes = []
-
 def make_escapes(pass_iso8859):
     global escapes
-    if pass_iso8859:
-        # Allow iso-8859 characters to pass through so that e.g. 'msgid
-        # "Höhe"' would result not result in 'msgid "H\366he"'.  Otherwise we
-        # escape any character outside the 32..126 range.
-        mod = 128
-    else:
-        mod = 256
+    mod = 128 if pass_iso8859 else 256
     for i in range(256):
         if 32 <= (i % mod) <= 126:
             escapes.append(chr(i))
@@ -223,6 +215,9 @@ def make_escapes(pass_iso8859):
             escapes.append("\\%03o" % i)
     escapes[ord('\\')] = '\\\\'
     escapes[ord('\t')] = '\\t'
+    escapes[ord('\r')] = '\\r'
+    escapes[ord('\n')] = '\\n'
+    escapes[ord('\"')] = '\\"'
     escapes[ord('\r')] = '\\r'
     escapes[ord('\n')] = '\\n'
     escapes[ord('\"')] = '\\"'
@@ -244,21 +239,21 @@ def escape(s):
 
 def safe_eval(s):
     # unwrap quotes, safely
-    return eval(s, {'__builtins__':{}}, {})
-
-
-def normalize(s):
+    def normalize(s):
     # This converts the various Python string types into a format that is
     # appropriate for .po files, namely much closer to C style.
     lines = s.split('\n')
     if len(lines) == 1:
-        s = '"' + escape(s) + '"'
+        s = f'"{escape(s)}"'
     else:
         if not lines[-1]:
             del lines[-1]
             lines[-1] = lines[-1] + '\n'
         for i in range(len(lines)):
             lines[i] = escape(lines[i])
+        lineterm = '\\n"\n"'
+        s = '""\n"' + lineterm.join(lines) + '"'
+    return s
         lineterm = '\\n"\n"'
         s = '""\n"' + lineterm.join(lines) + '"'
     return s
@@ -446,10 +441,6 @@ class TokenEater:
             entry = (self.__curfile, lineno)
             self.__messages.setdefault(msg, {})[entry] = isdocstring
 
-    def set_filename(self, filename):
-        self.__curfile = filename
-        self.__freshmodule = 1
-
     def write(self, fp):
         options = self.__options
         timestamp = time.strftime('%Y-%m-%d %H:%M+%Z')
@@ -477,7 +468,6 @@ class TokenEater:
                 v = sorted(v.keys())
                 if not options.writelocations:
                     pass
-                # location comments are different b/w Solaris and GNU:
                 elif options.locationstyle == options.SOLARIS:
                     for filename, lineno in v:
                         d = {'filename': filename, 'lineno': lineno}
@@ -494,8 +484,13 @@ class TokenEater:
                             locline = locline + s
                         else:
                             print(locline, file=fp)
-                            locline = "#:" + s
+                            locline = f"#:{s}"
                     if len(locline) > 2:
+                        print(locline, file=fp)
+                if isdocstring:
+                    print('#, docstring', file=fp)
+                print('msgid', normalize(k), file=fp)
+                print('msgstr ""\n', file=fp)
                         print(locline, file=fp)
                 if isdocstring:
                     print('#, docstring', file=fp)

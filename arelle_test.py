@@ -72,15 +72,14 @@ def pytest_generate_tests(metafunc):
     print ("gen tests") # ?? print does not come out to console or log, want to show progress
     config = configparser.ConfigParser(allow_no_value=True) # allow no value
     if not os.path.exists(metafunc.config.option.tests):
-        raise IOError('--test file does not exist: %s' %
-                      metafunc.config.option.tests)
+        raise IOError(f'--test file does not exist: {metafunc.config.option.tests}')
     config.read(metafunc.config.option.tests)
     for i, section in enumerate(config.sections()):
         # don't close, so we can inspect results below; log to std err
-        arelleRunArgs = ['--keepOpen', '--logFile', 'logToStdErr']  
+        arelleRunArgs = ['--keepOpen', '--logFile', 'logToStdErr']
         for optionName, optionValue in config.items(section):
             if not optionName.startswith('_'):
-                arelleRunArgs.append('--' + optionName)
+                arelleRunArgs.append(f'--{optionName}')
                 if optionValue:
                     arelleRunArgs.append(optionValue)
         print("section {0} run arguments {1}".format(section, " ".join(arelleRunArgs)))
@@ -94,9 +93,9 @@ def pytest_generate_tests(metafunc):
     
 def runTest(section, args):
     print ("run tests") # ?? print does not come out to console or log, want to show progress
-    
+
     cntlr = parseAndRun(args) # log to print (only failed assertions are captured)
-        
+
     outcomes = []
     if '--validate' in args:
         modelDocument = cntlr.modelManager.modelXbrl.modelDocument
@@ -108,43 +107,62 @@ def runTest(section, args):
                 for tc in sorted(modelDocument.referencesDocument.keys(), key=lambda doc: doc.uri):
                     test_case = os.path.basename(tc.uri)
                     if hasattr(tc, "testcaseVariations"):
-                        for mv in tc.testcaseVariations:
-                            outcomes.append({'section': section,
-                                             'testcase': test_case,
-                                             'variation': str(mv.id or mv.name), # copy string to dereference mv
-                                             'name': str(mv.description or mv.name), 
-                                             'status': str(mv.status), 
-                                             'expected': str(mv.expected), 
-                                             'actual': str(mv.actual)})
+                        outcomes.extend(
+                            {
+                                'section': section,
+                                'testcase': test_case,
+                                'variation': str(
+                                    mv.id or mv.name
+                                ),  # copy string to dereference mv
+                                'name': str(mv.description or mv.name),
+                                'status': str(mv.status),
+                                'expected': str(mv.expected),
+                                'actual': str(mv.actual),
+                            }
+                            for mv in tc.testcaseVariations
+                        )
             elif modelDocument.type in (ModelDocument.Type.TESTCASE,
                                         ModelDocument.Type.REGISTRYTESTCASE):
                 tc = modelDocument
                 test_case = os.path.basename(tc.uri)
                 if hasattr(tc, "testcaseVariations"):
-                    for mv in tc.testcaseVariations:
-                        outcomes.append({'section': section,
-                                         'testcase': test_case,
-                                         'variation': str(mv.id or mv.name), 
-                                         'name': str(mv.description or mv.name), 
-                                         'status': str(mv.status), 
-                                         'expected': str(mv.expected), 
-                                         'actual': str(mv.actual)})
+                    outcomes.extend(
+                        {
+                            'section': section,
+                            'testcase': test_case,
+                            'variation': str(mv.id or mv.name),
+                            'name': str(mv.description or mv.name),
+                            'status': str(mv.status),
+                            'expected': str(mv.expected),
+                            'actual': str(mv.actual),
+                        }
+                        for mv in tc.testcaseVariations
+                    )
             elif modelDocument.type == ModelDocument.Type.RSSFEED:
                 tc = modelDocument
                 if hasattr(tc, "rssItems"):
-                    for rssItem in tc.rssItems:
-                        outcomes.append({'section': section,
-                                         'testcase': os.path.basename(rssItem.url),
-                                         'variation': str(rssItem.accessionNumber), 
-                                         'name': str(rssItem.formType + " " +
-                                                     rssItem.cikNumber + " " +
-                                                     rssItem.companyName + " " +
-                                                     str(rssItem.period) + " " + 
-                                                     str(rssItem.filingDate)), 
-                                         'status': str(rssItem.status), 
-                                         'expected': rssItem.url, 
-                                         'actual': " ".join(str(result) for result in (rssItem.results or [])) +
-                                                   ((" " + str(rssItem.assertions)) if rssItem.assertions else "")})
+                    outcomes.extend(
+                        {
+                            'section': section,
+                            'testcase': os.path.basename(rssItem.url),
+                            'variation': str(rssItem.accessionNumber),
+                            'name': str(
+                                f"{rssItem.formType} {rssItem.cikNumber} {rssItem.companyName} {str(rssItem.period)} {str(rssItem.filingDate)}"
+                            ),
+                            'status': str(rssItem.status),
+                            'expected': rssItem.url,
+                            'actual': " ".join(
+                                str(result)
+                                for result in (rssItem.results or [])
+                            )
+                            + (
+                                f" {str(rssItem.assertions)}"
+                                if rssItem.assertions
+                                else ""
+                            ),
+                        }
+                        for rssItem in tc.rssItems
+                    )
         del modelDocument # dereference
     cntlr.modelManager.close()
     del cntlr # dereference

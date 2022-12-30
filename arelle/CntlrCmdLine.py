@@ -38,8 +38,7 @@ def main():
        :param argv: Command line arguments.  (Currently supported arguments can be displayed by the parameter *--help*.)
        :type message: [str]
        """
-    envArgs = os.getenv("ARELLE_ARGS")
-    if envArgs:
+    if envArgs := os.getenv("ARELLE_ARGS"):
         args = shlex.split(envArgs)
     else:
         args = sys.argv[1:]

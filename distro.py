@@ -1,6 +1,7 @@
 """
 See COPYRIGHT.md for copyright information.
 """
+
 import os
 import sys
 
@@ -69,32 +70,43 @@ options = {
 }
 
 if os.path.exists("arelle/plugin/EdgarRenderer"):
-    includeLibs.append("cherrypy")
-    includeLibs.append("dateutil")
-    includeLibs.append("dateutil.relativedelta")
-    includeLibs.append("matplotlib")
-    includeLibs.append("matplotlib.pyplot")
-    includeLibs.append("pyparsing")
-    includeLibs.append("pytz")
-    includeLibs.append("six")
-    includeLibs.append("tornado")
-
+    includeLibs.extend(
+        (
+            "cherrypy",
+            "dateutil",
+            "dateutil.relativedelta",
+            "matplotlib",
+            "matplotlib.pyplot",
+            "pyparsing",
+            "pytz",
+            "six",
+            "tornado",
+        )
+    )
 if sys.platform == LINUX_PLATFORM:
     guiExecutable = Executable(script="arelleGUI.py", target_name="arelleGUI")
     includeFiles.append(("arelle/scripts-unix", "scripts"))
     if os.path.exists("/etc/redhat-release"):
-        includeFiles.append(("/usr/lib64/libexslt.so.0", "libexslt.so"))
-        includeFiles.append(("/usr/lib64/libxml2.so", "libxml2.so"))
-        includeFiles.append(("/usr/lib64/libxml2.so.2", "libxml2.so.2"))
-        includeFiles.append(("/usr/lib64/libxslt.so.1", "libxslt.so"))
-        includeFiles.append(("/lib64/libz.so.1", "libz.so.1"))
-        includeFiles.append(("/usr/lib64/liblzma.so.5", "liblzma.so.5"))
-        includeFiles.append(("/usr/local/lib/tcl8.6", "tcl8.6"))
-        includeFiles.append(("/usr/local/lib/tk8.6", "tk8.6"))
+        includeFiles.extend(
+            (
+                ("/usr/lib64/libexslt.so.0", "libexslt.so"),
+                ("/usr/lib64/libxml2.so", "libxml2.so"),
+                ("/usr/lib64/libxml2.so.2", "libxml2.so.2"),
+                ("/usr/lib64/libxslt.so.1", "libxslt.so"),
+                ("/lib64/libz.so.1", "libz.so.1"),
+                ("/usr/lib64/liblzma.so.5", "liblzma.so.5"),
+                ("/usr/local/lib/tcl8.6", "tcl8.6"),
+                ("/usr/local/lib/tk8.6", "tk8.6"),
+            )
+        )
 elif sys.platform == MACOS_PLATFORM:
     guiExecutable = Executable(script="arelleGUI.py", target_name="arelleGUI")
-    includeFiles.append(("arelle/scripts-macOS", "scripts"))
-    includeFiles.append(("libs/macos/Tktable2.11", "Tktable2.11"))
+    includeFiles.extend(
+        (
+            ("arelle/scripts-macOS", "scripts"),
+            ("libs/macos/Tktable2.11", "Tktable2.11"),
+        )
+    )
     options["bdist_mac"] = {
         "iconfile": "arelle/images/arelle.icns",
         "bundle_name": "Arelle",
@@ -108,11 +120,9 @@ elif sys.platform == WINDOWS_PLATFORM:
     includeFiles.append(("arelle\\scripts-windows", "scripts"))
     if "arelle.webserver" in packages:
         includeFiles.append("QuickBooks.qwc")
-    # note cx_Oracle isn't included for unix builds because it is version and machine specific.
-    includeLibs.append("cx_Oracle")
-    includeLibs.append("pyodbc")
-    includeLibs.append("requests")
-    includeLibs.append("requests_negotiate_sspi")
+    includeLibs.extend(
+        ("cx_Oracle", "pyodbc", "requests", "requests_negotiate_sspi")
+    )
     options["build_exe"]["include_msvcr"] = True
 else:
     raise ValueError(

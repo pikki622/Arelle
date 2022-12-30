@@ -9,10 +9,7 @@ from arelle.PythonUtil import pyTypeName
 from numbers import Number
 
 def anytypeArg(xc, args, i, type, missingArgFallback=None):
-    if len(args) > i:
-        item = args[i]
-    else:
-        item = missingArgFallback
+    item = args[i] if len(args) > i else missingArgFallback
     if isinstance(item, (tuple,list)):
         if len(item) > 1: raise FunctionArgType(i,type,item)
         if len(item) == 0: return ()
@@ -21,8 +18,7 @@ def anytypeArg(xc, args, i, type, missingArgFallback=None):
 
 def atomicArg(xc, p, args, i, type, missingArgFallback=None, emptyFallback=()):
     item = anytypeArg(xc, args, i, type, missingArgFallback)
-    if item == (): return emptyFallback
-    return xc.atomize(p, item)
+    return emptyFallback if item == () else xc.atomize(p, item)
 
 def stringArg(xc, args, i, type, missingArgFallback=None, emptyFallback=''):
     item = anytypeArg(xc, args, i, type, missingArgFallback)
@@ -84,8 +80,7 @@ def testTypeCompatiblity(xc, p, op, a1, a2):
         if ((isinstance(a1,ModelValue.DateTime) and isinstance(a2,(ModelValue.YearMonthDuration,datetime.timedelta))) or
             ((isinstance(a1,datetime.date) and isinstance(a2,datetime.timedelta)))):
             return
-    else:
-        if (isinstance(a1,datetime.date) and isinstance(a2,datetime.date)):
-            return
+    elif (isinstance(a1,datetime.date) and isinstance(a2,datetime.date)):
+        return
     raise XPathException(p, 'err:XPTY0004', _('Value operation {0} incompatible arguments {1} ({2}) and {3} ({4})')
                                             .format(op, a1, pyTypeName(a1), a2, pyTypeName(a2)))

@@ -309,37 +309,35 @@ def checkDate(y,m,d):
         return False
 
 def z2(arg):   # zero pad to 2 digits
-    if arg is not None and len(arg) == 1:
-        return '0' + arg
-    return arg
+    return f'0{arg}' if arg is not None and len(arg) == 1 else arg
 
 def yr4(arg):   # zero pad to 4 digits
     if arg is not None:
         if len(arg) == 1:
-            return '200' + arg
+            return f'200{arg}'
         elif len(arg) == 2:
-            return '20' + arg
+            return f'20{arg}'
     return arg
 
 def yrin(arg, _mo, _day):   # zero pad to 4 digits
     if arg is not None and len(arg) == 2:
         if arg > '21' or (arg == '21' and _mo >= 10 and _day >= 11):
-            return '19' + arg
+            return f'19{arg}'
         else:
-            return '20' + arg
+            return f'20{arg}'
     return arg
 
-devanagariDigitsTrTable = dict((0x966 + i, ord("0") + i) for i in range(10))
+devanagariDigitsTrTable = {0x966 + i: ord("0") + i for i in range(10)}
 def devanagariDigitsToNormal(devanagariDigits):
     return devanagariDigits.translate(devanagariDigitsTrTable)
 
-jpDigitsTrTable = dict((0xFF10 + i, ord("0") + i) for i in range(10))
+jpDigitsTrTable = {0xFF10 + i: ord("0") + i for i in range(10)}
 def jpDigitsToNormal(jpDigits):
     return jpDigits.translate(jpDigitsTrTable)
 
 def sakaToGregorian(sYr, sMo, sDay): # replacement of plug-in sakaCalendar.py which is LGPL-v3 licensed
     gYr = sYr + 78  # offset from Saka to Gregorian year
-    sStartsInLeapYr = gYr % 4 == 0 and (not gYr % 100 == 0 or gYr % 400 == 0) # Saka yr starts in leap yr
+    sStartsInLeapYr = gYr % 4 == 0 and (gYr % 100 != 0 or gYr % 400 == 0)
     if gYr < 0:
         raise ValueError(_("Saka calendar year not supported: {0} {1} {2} "), sYr, sMo, sDay)
     if  sMo < 1 or sMo > 12:
@@ -354,7 +352,7 @@ def sakaToGregorian(sYr, sMo, sDay): # replacement of plug-in sakaCalendar.py wh
         gDayOffset -= 1 # Chaitra starts 1 day earlier when starting in Gregorian leap years
     gYr += gYrOffset # later Saka months offset into next Gregorian year
     gMoLength = gLastMoDay[gMo - 1] # month length (days in month)
-    if gMo == 2 and gYr % 4 == 0 and (not gYr % 100 == 0 or gYr % 400 == 0): # does Phalguna (Feb) end in a Gregorian leap year?
+    if gMo == 2 and gYr % 4 == 0 and (gYr % 100 != 0 or gYr % 400 == 0): # does Phalguna (Feb) end in a Gregorian leap year?
         gMoLength += 1 # Phalguna (Feb) is in a Gregorian leap year (Feb has 29 days)
     gDay = gDayOffset + sDay - 1
     if gDay > gMoLength: # overflow from Gregorial month of start of Saka month to next Gregorian month
@@ -382,10 +380,10 @@ def eraYear(era,yr):
     return eraStart[era] + (1 if yr == '元' else int(yr))
 
 def canonicalNumber(n):
-    m = numCanonicalizationPattern.match(n)
-    if m:
+    if m := numCanonicalizationPattern.match(n):
         return (m.group(1) or "0") + (m.group(4) or "")
-    return m
+    else:
+        return m
 
 # transforms
 
@@ -648,9 +646,9 @@ def datemonthyeardk(arg):
         mon3 = m.group(1).lower()
         monEnd = m.group(2)
         monPer = m.group(3)
-        if mon3 in monthnumber and ((not monEnd and not monPer) or
-                                    (not monEnd and monPer) or
-                                    (monEnd and not monPer)):
+        if mon3 in monthnumber and (
+            not monEnd and not monPer or not monEnd or not monPer
+        ):
             return "{0}-{1:02}".format(yr4(m.group(4)), monthnumber[mon3])
     raise XPathContext.FunctionArgType(0,"xs:gYearMonth")
 
@@ -772,9 +770,9 @@ def datedaymonthyeardk(arg):
         _mon3 = m.group(2).lower()
         _monEnd = m.group(3)
         _monPer = m.group(4)
-        if _mon3 in monthnumber and ((not _monEnd and not _monPer) or
-                                     (not _monEnd and _monPer) or
-                                     (_monEnd and not _monPer)):
+        if _mon3 in monthnumber and (
+            not _monEnd and not _monPer or not _monEnd or not _monPer
+        ):
             _mo = monthnumber[_mon3]
             if checkDate(_yr, _mo, _day):
                 return "{0}-{1:02}-{2}".format(_yr, _mo, _day)
@@ -1005,13 +1003,9 @@ def numdotdecimalApos(arg):
     raise XPathContext.FunctionArgType(0,"ixt:numdotdecimalType")
 
 def numdotdecimalin(arg):
-    m = numDotDecimalInPattern.match(arg)
-    if m:
+    if m := numDotDecimalInPattern.match(arg):
         m2 = [g for g in m.groups() if g is not None]
-        if m2[-1].startswith("."):
-            fract = m2[-1]
-        else:
-            fract = ""
+        fract = m2[-1] if m2[-1].startswith(".") else ""
         return m2[0].replace(',','').replace(' ','').replace('\xa0','') + fract
     raise XPathContext.FunctionArgType(1,"ixt:numdotdecimalinType")
 
@@ -1032,7 +1026,7 @@ def numunitdecimalTR4(arg):
         majorValue = m.group(1).replace('.','').replace(',','').replace('\uFF0C','').replace('\uFF0E','')
         fractValue = z2(m.group(m.lastindex))
         if len(majorValue) > 0 and len(fractValue) > 0:
-            return canonicalNumber(majorValue + '.' + fractValue)
+            return canonicalNumber(f'{majorValue}.{fractValue}')
     raise XPathContext.FunctionArgType(1,"ixt:nonNegativeDecimalType")
 
 def numunitdecimalApos(arg):
@@ -1042,12 +1036,11 @@ def numunitdecimalApos(arg):
         majorValue = m.group(1).replace('.','').replace(',','').replace('\'', '').replace('`', '').replace('´', '').replace('’', '').replace('′', '').replace('＇', '').replace('\uFF0C','').replace('\uFF0E','')
         fractValue = z2(m.group(m.lastindex))
         if len(majorValue) > 0 and len(fractValue) > 0:
-            return canonicalNumber(majorValue + '.' + fractValue)
+            return canonicalNumber(f'{majorValue}.{fractValue}')
     raise XPathContext.FunctionArgType(1,"ixt:nonNegativeDecimalType")
 
 def numunitdecimalin(arg):
-    m = numUnitDecimalInPattern.match(arg)
-    if m:
+    if m := numUnitDecimalInPattern.match(arg):
         m2 = [g for g in m.groups() if g is not None]
         return m2[0].replace(',','').replace(' ','').replace('\xa0','') + '.' + z2(m2[-2])
     raise XPathContext.FunctionArgType(1,"ixt:numunitdecimalinType")
@@ -1106,12 +1099,10 @@ tr2Functions = {
     'numunitdecimal': numunitdecimal
 }
 
-    # transformation registry v-3 functions
-tr3Functions = tr2Functions.copy() # tr3 starts with tr2 and adds more functions
-tr3Functions.update ({
+tr3Functions = tr2Functions | {
     # same as v2: 'booleanfalse': booleanfalse,
     # same as v2: 'booleantrue': booleantrue,
-    'calindaymonthyear': calindaymonthyear, # TBD: calindaymonthyear,
+    'calindaymonthyear': calindaymonthyear,  # TBD: calindaymonthyear,
     #'calinmonthyear': nocontent, # TBD: calinmonthyear,
     # same as v2: 'datedaymonth': datedaymonthTR2,
     'datedaymonthdk': datedaymonthdk,
@@ -1131,7 +1122,7 @@ tr3Functions.update ({
     # same as v2: 'datemonthyearen': datemonthyearen,
     'datemonthyearin': datemonthyearin,
     # same as v2: 'dateyearmonthcjk': dateyearmonthcjk,
-    'dateyearmonthday': dateyearmonthday, # (Y)Y(YY)*MM*DD allowing kanji full-width numerals
+    'dateyearmonthday': dateyearmonthday,  # (Y)Y(YY)*MM*DD allowing kanji full-width numerals
     # same as v2: 'dateyearmonthdaycjk': dateyearmonthdaycjk,
     # same as v2: 'dateyearmonthen': dateyearmonthen,
     # same as v2: 'nocontent': nocontent,
@@ -1141,8 +1132,7 @@ tr3Functions.update ({
     # same as v2: 'numunitdecimal': numunitdecimal,
     'numunitdecimalin': numunitdecimalin,
     # same as v2: 'zerodash': zerodash,
-})
-    # transformation registry v-4 functions
+}
 tr4Functions = {
     'date-day-month': datedaymonthTR2,
     'date-day-monthname-bg': datedaymonthbg,
@@ -1240,9 +1230,7 @@ tr4Functions = {
     'numdotdecimalin': numdotdecimalinTR4,
     'num-unit-decimal': numunitdecimalTR4,
 }
-    # transformation registry v-5 functions
-tr5Functions = tr4Functions.copy() # tr5 starts with tr4 and adds more functions
-tr5Functions.update ({
+tr5Functions = tr4Functions | {
     # Welsh language
     'date-day-monthname-cy': datedaymonthcy,
     'date-day-monthname-year-cy': datedaymonthyearcy,
@@ -1250,8 +1238,8 @@ tr5Functions.update ({
     # Swiss-style numbers with apostrophes as thousand separators
     'num-comma-decimal-apos': numcommadecimalApos,
     'num-dot-decimal-apos': numdotdecimalApos,
-    'num-unit-decimal-apos': numunitdecimalApos
-})
+    'num-unit-decimal-apos': numunitdecimalApos,
+}
 deprecatedNamespaceURI = 'http://www.xbrl.org/2008/inlineXBRL/transformation' # the CR/PR pre-REC namespace
 
 ixtNamespaces = {

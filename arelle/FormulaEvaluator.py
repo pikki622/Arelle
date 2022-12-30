@@ -47,8 +47,7 @@ def evaluate(xpCtx, varSet, variablesInScope=False, uncoveredAspectFacts=None):
         initialTraceCount = xpCtx.modelXbrl.logCount.get(logging.getLevelName('INFO'), 0)
         evaluateVar(xpCtx, varSet, 0, {}, uncoveredAspectFacts)
         if isinstance(varSet, ModelExistenceAssertion):
-            prog = varSet.testProg
-            if prog:
+            if prog := varSet.testProg:
                 assertionParamQnames = []  # set and then remove assertion variable quames
                 for varRel in varSet.orderedVariableRelationships:
                     varQname = varRel.variableQname
@@ -93,9 +92,12 @@ def evaluate(xpCtx, varSet, variablesInScope=False, uncoveredAspectFacts=None):
                 varSet.countSatisfied += 1
             else:
                 varSet.countNotSatisfied += 1
-                if unsatSeverity == "OK": varSet.countOkMessages += 1
-                elif unsatSeverity == "WARNING": varSet.countWarningMessages += 1
-                elif unsatSeverity == "ERROR": varSet.countErrorMessages += 1
+                if unsatSeverity == "ERROR":
+                    varSet.countErrorMessages += 1
+                elif unsatSeverity == "OK":
+                    if unsatSeverity == "OK": varSet.countOkMessages += 1
+                elif unsatSeverity == "WARNING":
+                    varSet.countWarningMessages += 1
         if xpCtx.formulaOptions.traceVariableSetExpressionResult and initialTraceCount == xpCtx.modelXbrl.logCount.get(logging._checkLevel('INFO'), 0):
             xpCtx.modelXbrl.info("formula:trace",
                  _("Variable set %(xlinkLabel)s had no xpCtx.evaluations"),
@@ -112,11 +114,16 @@ def evaluate(xpCtx, varSet, variablesInScope=False, uncoveredAspectFacts=None):
                  modelObject=varSet, label=varSet.logLabel(), error=err.message)
         xpCtx.variableSet = None
     if xpCtx.formulaOptions.traceVariableSetExpressionResult:
-        xpCtx.modelXbrl.info("formula:trace",
-                             _("Variable set %(xlinkLabel)s evaluations: %(evaluations)s x %(variables)s"),
-                             modelObject=varSet, xlinkLabel=varSet.xlinkLabel,
-                             evaluations=len(xpCtx.evaluations),
-                             variables=max(len(e) for e in xpCtx.evaluations) if xpCtx.evaluations else 0)
+        xpCtx.modelXbrl.info(
+            "formula:trace",
+            _(
+                "Variable set %(xlinkLabel)s evaluations: %(evaluations)s x %(variables)s"
+            ),
+            modelObject=varSet,
+            xlinkLabel=varSet.xlinkLabel,
+            evaluations=len(xpCtx.evaluations),
+            variables=max((len(e) for e in xpCtx.evaluations), default=0),
+        )
     del xpCtx.evaluations[:]  # dereference
     xpCtx.evaluationHashDicts.clear()
     if variablesInScope:
@@ -126,7 +133,6 @@ def evaluate(xpCtx, varSet, variablesInScope=False, uncoveredAspectFacts=None):
             vb.close()  # dereference
         xpCtx.varBindings.clear() # dereference
         uncoveredAspectFacts.clear()    # dereference
-        pass
 
 def evaluateVar(xpCtx, varSet, varIndex, cachedFilteredFacts, uncoveredAspectFacts):
     if varIndex == len(varSet.orderedVariableRelationships):

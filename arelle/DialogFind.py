@@ -183,9 +183,13 @@ class DialogFind(Toplevel):
                          _("XPath matching is not available for searching messages, please choose text or regular expression.  "), parent=self)
                 return
         else:
-            if not self.modelManager.modelXbrl or not docType in (
-                 ModelDocument.Type.SCHEMA, ModelDocument.Type.LINKBASE, ModelDocument.Type.INSTANCE, ModelDocument.Type.INLINEXBRL,
-                 ModelDocument.Type.RSSFEED):
+            if not self.modelManager.modelXbrl or docType not in (
+                ModelDocument.Type.SCHEMA,
+                ModelDocument.Type.LINKBASE,
+                ModelDocument.Type.INSTANCE,
+                ModelDocument.Type.INLINEXBRL,
+                ModelDocument.Type.RSSFEED,
+            ):
                 messagebox.showerror(_("Find cannot be completed"),
                          _("Find requires an opened DTS or RSS Feed"), parent=self.parent)
                 return
@@ -201,7 +205,7 @@ class DialogFind(Toplevel):
         if expr in self.options["priorExpressions"]:
             self.options["priorExpressions"].remove(expr)
         elif len(self.options["priorExpressions"]) > 10:
-            self.options["priorExpressions"] = self.options["priorExpressions"][0:10]
+            self.options["priorExpressions"] = self.options["priorExpressions"][:10]
         self.options["priorExpressions"].insert(0, expr)
         self.cbExpr.config(values=self.options["priorExpressions"])
         self.saveConfig()

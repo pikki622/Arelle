@@ -15,13 +15,12 @@ class Md5Sum:
         elif isinstance(initialValue, str): # includes Md5HexValue, unicode string, py2.7 string
             self.value = int(initialValue, 16) & Md5Sum.MAXMd5SUM
         else:
-            raise ValueError("MD5Sum called with {} but must be an MD5Sum or hex number"
-                             .format(initialValue.__class__.__name__))
+            raise ValueError(
+                f"MD5Sum called with {initialValue.__class__.__name__} but must be an MD5Sum or hex number"
+            )
     def toHex(self):
         s = hex(self.value)[2:]
-        if s.endswith('L'):
-            return s[:-1]
-        return s
+        return s[:-1] if s.endswith('L') else s
 
     def __str__(self):
         return self.toHex()
@@ -70,10 +69,5 @@ def md5hash(argList):
                 _md5.update('\x1F'.join(text.strip()
                                         for text in XmlUtil.innerTextNodes(_arg, True, False, True, False))
                             .encode('utf-8','replace'))
-    if firstMd5arg:
-        md5sum = MD5SUM0
-    else:
-        md5sum = Md5Sum(_md5.hexdigest())
-    if nestedSum == MD5SUM0:
-        return md5sum # no multiple terms
-    return md5sum + nestedSum
+    md5sum = MD5SUM0 if firstMd5arg else Md5Sum(_md5.hexdigest())
+    return md5sum if nestedSum == MD5SUM0 else md5sum + nestedSum

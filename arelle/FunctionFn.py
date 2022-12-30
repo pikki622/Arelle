@@ -30,9 +30,7 @@ def call(xc, p, localname, contextItem, args):
 
 def node_name(xc, p, contextItem, args):
     node = nodeArg(xc, args, 0, "node()?", missingArgFallback=contextItem, emptyFallback=())
-    if node != ():
-        return qname(node)
-    return ()
+    return qname(node) if node != () else ()
 
 def nilled(xc, p, contextItem, args):
     node = nodeArg(xc, args, 0, "node()?", missingArgFallback=contextItem, emptyFallback=())
@@ -127,8 +125,7 @@ def codepoints_to_string(xc, p, contextItem, args):
 def string_to_codepoints(xc, p, contextItem, args):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
     str = stringArg(xc, args, 0, "xs:string", emptyFallback=())
-    if str == (): return ()
-    return tuple(ord(c) for c in str)
+    return () if str == () else tuple(ord(c) for c in str)
 
 def compare(xc, p, contextItem, args):
     if len(args) == 3: raise fnFunctionNotAvailable()
@@ -137,8 +134,7 @@ def compare(xc, p, contextItem, args):
     comparand2 = stringArg(xc, args, 1, "xs:string?", emptyFallback=())
     if comparand1 == () or comparand2 == (): return ()
     if comparand1 == comparand2: return 0
-    if comparand1 < comparand2: return -1
-    return 1
+    return -1 if comparand1 < comparand2 else 1
 
 def codepoint_equal(xc, p, contextItem, args):
     raise fnFunctionNotAvailable()
@@ -172,10 +168,10 @@ def substring(xc, p, contextItem, args):
         length = int(round( numericArg(xc, p, args, 2) ))
         if start < 0:
             length += start
-            if length < 0: length = 0
+            length = max(length, 0)
             start = 0
         return string[start:start + length]
-    if start < 0: start = 0
+    start = max(start, 0)
     return string[start:]
 
 def string_length(xc, p, contextItem, args):
@@ -568,13 +564,7 @@ def index_of(xc, p, contextItem, args):
     if isinstance(srch,(tuple,list)):
         if len(srch) != 1: raise XPathContext.FunctionArgType(1,'xs:anyAtomicType')
         srch = srch[0]
-    indices = []
-    pos = 0
-    for x in seq:
-        pos += 1
-        if x == srch:
-            indices.append(pos)
-    return indices
+    return [pos for pos, x in enumerate(seq, start=1) if x == srch]
 
 def empty(xc, p, contextItem, args):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
@@ -587,8 +577,7 @@ def exists(xc, p, contextItem, args):
 def distinct_values(xc, p, contextItem, args):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
     sequence = args[0]
-    if len(sequence) == 0: return []
-    return list(set(xc.atomize(p, sequence)))
+    return [] if len(sequence) == 0 else list(set(xc.atomize(p, sequence)))
 
 def insert_before(xc, p, contextItem, args):
     if len(args) != 3: raise XPathContext.FunctionNumArgs()
@@ -610,8 +599,7 @@ def remove(xc, p, contextItem, args):
 def reverse(xc, p, contextItem, args):
     if len(args) != 1: raise XPathContext.FunctionNumArgs()
     sequence = args[0]
-    if len(sequence) == 0: return []
-    return list( reversed(sequence) )
+    return [] if len(sequence) == 0 else list( reversed(sequence) )
 
 def subsequence(xc, p, contextItem, args):
     if len(args) not in (2,3): raise XPathContext.FunctionNumArgs()
@@ -623,10 +611,10 @@ def subsequence(xc, p, contextItem, args):
         length = int(round( numericArg(xc, p, args, 2) ))
         if start < 0:
             length += start
-            if length < 0: length = 0
+            length = max(length, 0)
             start = 0
         return sequence[start:start + length]
-    if start < 0: start = 0
+    start = max(start, 0)
     return sequence[start:]
 
 def unordered(xc, p, contextItem, args):

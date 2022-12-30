@@ -8,7 +8,7 @@ def entityEncode(arg):  # be sure it's a string, vs int, etc, and encode &, <, "
 
 if __name__ == "__main__":
     startedAt = time.time()
-    
+
     idMsg = []
     numArelleSrcFiles = 0
 
@@ -32,72 +32,87 @@ if __name__ == "__main__":
                             if (isinstance(item, ast.Call) and
                                 (getattr(item.func, "attr", '') or getattr(item.func, "id", '')) # imported function could be by id instead of attr
                                 in ("info","warning","log","error","exception")):
-                                    funcName = item.func.attr
-                                    iArgOffset = 0
-                                    if funcName == "info":
-                                        level = "info"
-                                    elif funcName == "warning":
-                                        level = "warning"
-                                    elif funcName == "error":
-                                        level = "error"
-                                    elif funcName == "exception":
-                                        level = "exception"
-                                    elif funcName == "log":
-                                        levelArg = item.args[0]
-                                        if isinstance(levelArg,ast.Str):
-                                            level = levelArg.s.lower()
-                                        else:
-                                            if any(isinstance(elt, (ast.Call, ast.Name))
-                                                   for elt in ast.walk(levelArg)):
-                                                level = "(dynamic)"
-                                            else:
-                                                level = ', '.join(elt.s.lower()
-                                                                  for elt in ast.walk(levelArg)
-                                                                  if isinstance(elt, ast.Str))
-                                        iArgOffset = 1
-                                    msgCodeArg = item.args[0 + iArgOffset]  # str or tuple
-                                    if isinstance(msgCodeArg,ast.Str):
-                                        msgCodes = (msgCodeArg.s,)
-                                    elif isinstance(msgCodeArg, ast.Call) and getattr(msgCodeArg.func, "id", '') == 'ixMsgCode':
-                                        msgCodes = ("ix{{ver.sect}}:{}".format(msgCodeArg.args[0].s),)
+                                funcName = item.func.attr
+                                iArgOffset = 0
+                                if funcName == "error":
+                                    level = "error"
+                                elif funcName == "exception":
+                                    level = "exception"
+                                elif funcName == "info":
+                                    level = "info"
+                                elif funcName == "log":
+                                    levelArg = item.args[0]
+                                    if isinstance(levelArg,ast.Str):
+                                        level = levelArg.s.lower()
                                     else:
-                                        if any(isinstance(elt, (ast.Call, ast.Name))
+                                        level = (
+                                            "(dynamic)"
+                                            if any(
+                                                isinstance(
+                                                    elt, (ast.Call, ast.Name)
+                                                )
+                                                for elt in ast.walk(levelArg)
+                                            )
+                                            else ', '.join(
+                                                elt.s.lower()
+                                                for elt in ast.walk(levelArg)
+                                                if isinstance(elt, ast.Str)
+                                            )
+                                        )
+                                    iArgOffset = 1
+                                elif funcName == "warning":
+                                    level = "warning"
+                                msgCodeArg = item.args[0 + iArgOffset]  # str or tuple
+                                if isinstance(msgCodeArg,ast.Str):
+                                    msgCodes = (msgCodeArg.s,)
+                                elif isinstance(msgCodeArg, ast.Call) and getattr(msgCodeArg.func, "id", '') == 'ixMsgCode':
+                                    msgCodes = ("ix{{ver.sect}}:{}".format(msgCodeArg.args[0].s),)
+                                elif any(isinstance(elt, (ast.Call, ast.Name))
                                                for elt in ast.walk(msgCodeArg)):
-                                            msgCodes = ("(dynamic)",)
-                                        else:
+                                    msgCodes = ("(dynamic)",)
+                                else:
+                                    msgCodes = [elt.s 
+                                                for elt in ast.walk(msgCodeArg)
+                                                if isinstance(elt, ast.Str)]
+                                msgArg = item.args[1 + iArgOffset]
+                                if isinstance(msgArg, ast.Str):
+                                    msg = msgArg.s
+                                elif isinstance(msgArg, ast.Call) and getattr(msgArg.func, "id", '') == '_':
+                                    msg = msgArg.args[0].s
+                                elif any(isinstance(elt, (ast.Call,ast.Name))
+                                         for elt in ast.walk(msgArg)):
+                                    msg = "(dynamic)"
+                                else:
+                                    continue # not sure what to report
+                                keywords = []
+                                for keyword in item.keywords:
+                                    if keyword.arg == 'messageCodes':
+                                        msgCodeArg = keyword.value
+                                        if not any(
+                                            isinstance(
+                                                elt, (ast.Call, ast.Name)
+                                            )
+                                            for elt in ast.walk(msgCodeArg)
+                                        ):
                                             msgCodes = [elt.s 
                                                         for elt in ast.walk(msgCodeArg)
                                                         if isinstance(elt, ast.Str)]
-                                    msgArg = item.args[1 + iArgOffset]
-                                    if isinstance(msgArg, ast.Str):
-                                        msg = msgArg.s
-                                    elif isinstance(msgArg, ast.Call) and getattr(msgArg.func, "id", '') == '_':
-                                        msg = msgArg.args[0].s
-                                    elif any(isinstance(elt, (ast.Call,ast.Name))
-                                             for elt in ast.walk(msgArg)):
-                                        msg = "(dynamic)"
-                                    else:
-                                        continue # not sure what to report
-                                    keywords = []
-                                    for keyword in item.keywords:
-                                        if keyword.arg == 'modelObject':
-                                            pass
-                                        elif keyword.arg == 'messageCodes':
-                                            msgCodeArg = keyword.value
-                                            if any(isinstance(elt, (ast.Call, ast.Name))
-                                                   for elt in ast.walk(msgCodeArg)):
-                                                pass # dynamic
-                                            else:
-                                                msgCodes = [elt.s 
-                                                            for elt in ast.walk(msgCodeArg)
-                                                            if isinstance(elt, ast.Str)]
-                                        else:
-                                            keywords.append(keyword.arg)
-                                    for msgCode in msgCodes:
-                                        idMsg.append((msgCode, msg, level, keywords, refFilename, item.lineno))                                        
+                                    elif keyword.arg != 'modelObject':
+                                        keywords.append(keyword.arg)
+                                idMsg.extend(
+                                    (
+                                        msgCode,
+                                        msg,
+                                        level,
+                                        keywords,
+                                        refFilename,
+                                        item.lineno,
+                                    )
+                                    for msgCode in msgCodes
+                                )
                         except (AttributeError, IndexError):
                             pass
-                    
+
 
     lines = []
     for id,msg,level,args,module,line in idMsg:
@@ -116,11 +131,11 @@ if __name__ == "__main__":
                               line))
         except Exception as ex:
             print(ex)
-            print("traceback {}".format(traceback.format_tb(sys.exc_info()[2])))
+            print(f"traceback {traceback.format_tb(sys.exc_info()[2])}")
     os.makedirs(arelleSrcPath + os.sep + "doc", exist_ok=True)
-    with io.open(arelleSrcPath + os.sep + "doc" + os.sep + "messagesCatalog.xml", 'wt', encoding='utf-8') as f:
-        f.write(
-'''<?xml version="1.0" encoding="utf-8"?>
+        with io.open(arelleSrcPath + os.sep + "doc" + os.sep + "messagesCatalog.xml", 'wt', encoding='utf-8') as f:
+            f.write(
+    '''<?xml version="1.0" encoding="utf-8"?>
 <messages
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="messagesCatalog.xsd"
@@ -139,12 +154,12 @@ are reported as "(dynamic)".)
 -->
 
 ''')
-        f.write("\n\n".join(sorted(lines)))
-        f.write("\n\n</messages>")
-        
-    with io.open(arelleSrcPath + os.sep + "doc" + os.sep + "messagesCatalog.xsd", 'wt', encoding='utf-8') as f:
-        f.write(
-'''<?xml version="1.0" encoding="UTF-8"?>
+            f.write("\n\n".join(sorted(lines)))
+            f.write("\n\n</messages>")
+
+        with io.open(arelleSrcPath + os.sep + "doc" + os.sep + "messagesCatalog.xsd", 'wt', encoding='utf-8') as f:
+            f.write(
+    '''<?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <xs:element name="messages">
@@ -171,5 +186,5 @@ are reported as "(dynamic)".)
   </xs:element>
 </xs:schema>
 ''')
-    
+
     print("Arelle messages catalog {0:.2f} secs, {1} formula files, {2} messages".format( time.time() - startedAt, numArelleSrcFiles, len(idMsg) ))
